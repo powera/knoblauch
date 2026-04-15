@@ -21,7 +21,7 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8080", "HTTP listen address")
-	dsn := flag.String("db", envOrDefault("DATABASE_URL", "postgres://localhost/knoblauch?sslmode=disable"), "Postgres connection string")
+	dsn := flag.String("db", envOrDefault("DATABASE_URL", "postgres://localhost/knoblauch?sslmode=disable"), "Postgres connection string (use sslmode=require for Supabase)")
 	secretHex := flag.String("secret", envOrDefault("SESSION_SECRET", ""), "Hex-encoded 32-byte session secret (generated if empty)")
 	tmplDir := flag.String("templates", "templates", "Path to templates directory")
 	googleClientID := flag.String("google-client-id", envOrDefault("GOOGLE_CLIENT_ID", ""), "Google OAuth client ID")

@@ -37,10 +37,29 @@ Knoblauch is a simple Slack-like group chat server written in Go with a Postgres
 
 ## Environment variables
 
-| Variable         | Description                              | Default                                          |
-|------------------|------------------------------------------|--------------------------------------------------|
-| DATABASE_URL     | Postgres connection string               | postgres://localhost/knoblauch?sslmode=disable   |
-| SESSION_SECRET   | 64-char hex (32 bytes) for HMAC signing  | generated (ephemeral — sessions lost on restart) |
+| Variable             | Description                              | Default                                          |
+|----------------------|------------------------------------------|--------------------------------------------------|
+| DATABASE_URL         | Postgres connection string               | postgres://localhost/knoblauch?sslmode=disable   |
+| SESSION_SECRET       | 64-char hex (32 bytes) for HMAC signing  | generated (ephemeral — sessions lost on restart) |
+| GOOGLE_CLIENT_ID     | Google OAuth client ID                   | (Google login disabled if unset)                 |
+| GOOGLE_CLIENT_SECRET | Google OAuth client secret               | (Google login disabled if unset)                 |
+| BASE_URL             | Public base URL for OAuth redirect URI   | http://localhost:8080                            |
+
+## Using Supabase as the Postgres backend
+
+Supabase exposes two connection endpoints — use the **Session Mode pooler** (port 5432) for
+this app, which uses pgx with prepared statements and long-lived connections:
+
+```
+# From Supabase dashboard → Project Settings → Database → Connection string → URI
+DATABASE_URL="postgres://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres"
+```
+
+Key points:
+- The connection string from Supabase already includes `sslmode=require` — do not change it to `disable`.
+- Supabase free tier allows ~15 direct connections; the pool is capped at 10 (`MaxConns`) to stay safe.
+- Apply migrations via the Supabase SQL editor or `psql "$DATABASE_URL" -f migrations/001_initial.sql`.
+- The Transaction Mode pooler (port 6543) does **not** work with pgx prepared statements; use port 5432.
 
 ## Code conventions
 

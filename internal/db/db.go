@@ -14,7 +14,7 @@ func Open(ctx context.Context, connStr string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse db config: %w", err)
 	}
-	cfg.MaxConns = 20
+	cfg.MaxConns = 10
 	cfg.HealthCheckPeriod = 30 * time.Second
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
