@@ -1,0 +1,5 @@
+{{define "message_row.html"}}<div class="message" id="msg-{{.ID}}">
+  <span class="msg-user">{{.Username}}</span>
+  <span class="msg-time">{{timeAgo .CreatedAt}}</span>
+  <p class="msg-body">{{.Body}}</p>
+</div>{{end}}

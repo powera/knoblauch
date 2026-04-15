@@ -1,0 +1,16 @@
+{{template "base" .}}
+
+{{define "title"}} — Register{{end}}
+
+{{define "body"}}
+<main class="main-content form-page">
+  <h1>Register</h1>
+  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  <form method="POST" action="/register">
+    <label>Username <input type="text" name="username" required autofocus minlength="2" maxlength="32"></label>
+    <label>Password <input type="password" name="password" required minlength="8"></label>
+    <button type="submit">Create account</button>
+  </form>
+  <p>Already have an account? <a href="/login">Sign in</a></p>
+</main>
+{{end}}

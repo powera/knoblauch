@@ -1,0 +1,42 @@
+{{template "base" .}}
+
+{{define "title"}} — #{{.Channel.Name}}{{end}}
+
+{{define "body"}}
+<aside class="sidebar">
+  <h2>Channels</h2>
+  <ul class="channel-list">
+    {{range .Channels}}
+    <li class="{{if eq .Name $.Channel.Name}}active{{end}}">
+      <a href="/channel/{{.Name}}"># {{.Name}}</a>
+    </li>
+    {{end}}
+  </ul>
+</aside>
+<main class="main-content channel-view">
+  <header class="channel-header">
+    <h1># {{.Channel.Name}}</h1>
+    {{if .Channel.Description}}<p class="channel-desc">{{.Channel.Description}}</p>{{end}}
+  </header>
+
+  <div id="message-list" class="message-list" data-last-id="{{.LastID}}">
+    {{range .Messages}}
+    {{template "message_row.html" .}}
+    {{else}}
+    <p class="empty">No messages yet. Say something!</p>
+    {{end}}
+  </div>
+
+  <form id="post-form" class="post-form" method="POST" action="/channel/{{.Channel.Name}}/post">
+    <input id="msg-input" type="text" name="body" placeholder="Message #{{.Channel.Name}}" autocomplete="off" required maxlength="4000">
+    <button type="submit">Send</button>
+  </form>
+</main>
+{{end}}
+
+{{define "scripts"}}
+<script src="/static/js/chat.js"></script>
+<script>
+  initChat("/channel/{{.Channel.Name}}", {{.LastID}});
+</script>
+{{end}}

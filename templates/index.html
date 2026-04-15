@@ -1,0 +1,23 @@
+{{template "base" .}}
+
+{{define "title"}} — Channels{{end}}
+
+{{define "body"}}
+<aside class="sidebar">
+  <h2>Channels</h2>
+  <ul class="channel-list">
+    {{range .Channels}}
+    <li><a href="/channel/{{.Name}}"># {{.Name}}</a></li>
+    {{else}}
+    <li class="empty">No channels yet.</li>
+    {{end}}
+  </ul>
+</aside>
+<main class="main-content welcome">
+  {{if .LoggedIn}}
+    <p>Welcome back, <strong>{{.Username}}</strong>. Pick a channel to get started.</p>
+  {{else}}
+    <p>Welcome to Knoblauch. <a href="/register">Register</a> or <a href="/login">sign in</a> to chat.</p>
+  {{end}}
+</main>
+{{end}}
