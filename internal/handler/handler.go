@@ -12,26 +12,30 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/oauth2"
+
 	"github.com/powera/knoblauch/internal/db"
 	"github.com/powera/knoblauch/internal/model"
 )
 
 // Server holds shared state for all handlers.
 type Server struct {
-	pool      *pgxpool.Pool
-	templates *template.Template
-	secret    []byte
+	pool        *pgxpool.Pool
+	templates   *template.Template
+	secret      []byte
+	oauthConfig *oauth2.Config
 
 	// SSE broker
 	mu          sync.Mutex
 	subscribers map[int64][]chan model.Message // channelID -> list of subscriber chans
 }
 
-func NewServer(pool *pgxpool.Pool, tmpl *template.Template, secret []byte) *Server {
+func NewServer(pool *pgxpool.Pool, tmpl *template.Template, secret []byte, oauthCfg *oauth2.Config) *Server {
 	return &Server{
 		pool:        pool,
 		templates:   tmpl,
 		secret:      secret,
+		oauthConfig: oauthCfg,
 		subscribers: make(map[int64][]chan model.Message),
 	}
 }
@@ -47,6 +51,11 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /channel/{name}/post", s.handlePost)
 	mux.HandleFunc("GET /channel/{name}/events", s.handleSSE)
 	mux.HandleFunc("GET /channel/{name}/poll", s.handlePoll)
+
+	if s.oauthConfig != nil {
+		mux.HandleFunc("GET /auth/google", s.handleGoogleLogin)
+		mux.HandleFunc("GET /auth/google/callback", s.handleGoogleCallback)
+	}
 }
 
 // --- SSE broker ---
@@ -103,7 +112,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "login.html", map[string]any{"Error": ""})
+	s.render(w, "login.html", map[string]any{
+		"Error":         "",
+		"GoogleEnabled": s.oauthConfig != nil,
+	})
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +124,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	u, err := db.GetUserByUsername(r.Context(), s.pool, username)
 	if err != nil || !checkPassword(password, u.PasswordHash) {
-		s.render(w, "login.html", map[string]any{"Error": "Invalid username or password."})
+		s.render(w, "login.html", map[string]any{
+			"Error":         "Invalid username or password.",
+			"GoogleEnabled": s.oauthConfig != nil,
+		})
 		return
 	}
 	if err := setSessionCookie(w, s.secret, u.ID, u.Username); err != nil {

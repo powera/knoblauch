@@ -6,6 +6,10 @@
 <main class="main-content form-page">
   <h1>Sign in</h1>
   {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  {{if .GoogleEnabled}}
+  <a href="/auth/google" class="btn-google">Sign in with Google</a>
+  <hr class="divider">
+  {{end}}
   <form method="POST" action="/login">
     <label>Username <input type="text" name="username" required autofocus></label>
     <label>Password <input type="password" name="password" required></label>

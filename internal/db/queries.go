@@ -27,11 +27,41 @@ func CreateUser(ctx context.Context, pool *pgxpool.Pool, username, passwordHash 
 func GetUserByUsername(ctx context.Context, pool *pgxpool.Pool, username string) (model.User, error) {
 	var u model.User
 	err := pool.QueryRow(ctx,
-		`SELECT id, username, password_hash, created_at FROM users WHERE username = $1`,
+		`SELECT id, username, COALESCE(password_hash, ''), created_at FROM users WHERE username = $1`,
 		username,
 	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt)
 	if err != nil {
 		return model.User{}, fmt.Errorf("get user: %w", err)
+	}
+	return u, nil
+}
+
+// GetUserByGoogleID looks up a user by their Google subject ID.
+func GetUserByGoogleID(ctx context.Context, pool *pgxpool.Pool, googleID string) (model.User, error) {
+	var u model.User
+	err := pool.QueryRow(ctx,
+		`SELECT id, username, COALESCE(email, ''), created_at FROM users WHERE google_id = $1`,
+		googleID,
+	).Scan(&u.ID, &u.Username, &u.Email, &u.CreatedAt)
+	if err != nil {
+		return model.User{}, fmt.Errorf("get user by google id: %w", err)
+	}
+	return u, nil
+}
+
+// UpsertGoogleUser creates a new user for the given Google account, or returns the existing one.
+// username is only used on first insert; subsequent logins update the email.
+func UpsertGoogleUser(ctx context.Context, pool *pgxpool.Pool, googleID, email, username string) (model.User, error) {
+	var u model.User
+	err := pool.QueryRow(ctx,
+		`INSERT INTO users (google_id, email, username)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (google_id) DO UPDATE SET email = EXCLUDED.email
+		 RETURNING id, username, COALESCE(email, ''), created_at`,
+		googleID, email, username,
+	).Scan(&u.ID, &u.Username, &u.Email, &u.CreatedAt)
+	if err != nil {
+		return model.User{}, fmt.Errorf("upsert google user: %w", err)
 	}
 	return u, nil
 }
