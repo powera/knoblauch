@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -15,6 +16,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/powera/knoblauch/internal/db"
+	"github.com/powera/knoblauch/internal/integration"
 	"github.com/powera/knoblauch/internal/model"
 )
 
@@ -28,16 +30,36 @@ type Server struct {
 	// SSE broker
 	mu          sync.Mutex
 	subscribers map[int64][]chan model.Message // channelID -> list of subscriber chans
+
+	// Integration registry for @mention bot dispatch
+	integrations   *integration.Registry
+	systemUserIDs  map[string]int64 // integration name -> system user ID
 }
 
 func NewServer(pool *pgxpool.Pool, tmpl map[string]*template.Template, secret []byte, oauthCfg *oauth2.Config) *Server {
 	return &Server{
-		pool:        pool,
-		templates:   tmpl,
-		secret:      secret,
-		oauthConfig: oauthCfg,
-		subscribers: make(map[int64][]chan model.Message),
+		pool:          pool,
+		templates:     tmpl,
+		secret:        secret,
+		oauthConfig:   oauthCfg,
+		subscribers:   make(map[int64][]chan model.Message),
+		integrations:  integration.NewRegistry(),
+		systemUserIDs: make(map[string]int64),
 	}
+}
+
+// RegisterIntegration adds an integration to the server and looks up its system user ID.
+// Call this before the server starts accepting requests.
+func (s *Server) RegisterIntegration(ctx context.Context, intg integration.Integration) {
+	s.integrations.Register(intg)
+	u, err := db.GetSystemUserByUsername(ctx, s.pool, intg.Name())
+	if err != nil {
+		slog.Warn("system user not found for integration; @mention responses disabled",
+			"integration", intg.Name(), "err", err)
+		return
+	}
+	s.systemUserIDs[intg.Name()] = u.ID
+	slog.Info("integration registered", "name", intg.Name(), "system_user_id", u.ID)
 }
 
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
@@ -250,12 +272,39 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	s.broadcast(ch.ID, msg)
 
+	// Dispatch @mention integrations after saving the user message.
+	s.dispatchIntegration(r.Context(), ch.ID, body)
+
 	// HTMX or plain form: if HTMX, return rendered message fragment; else redirect.
 	if r.Header.Get("HX-Request") == "true" {
 		s.renderFragment(w, "message_row.html", msg)
 		return
 	}
 	http.Redirect(w, r, "/channel/"+channelName, http.StatusSeeOther)
+}
+
+// dispatchIntegration checks whether body is an @mention for a registered integration.
+// If so, the bot response is saved and broadcast as a message from the system user.
+// Runs synchronously so that errors are logged; callers do not need to wait on it.
+func (s *Server) dispatchIntegration(ctx context.Context, channelID int64, body string) {
+	name, _, ok := integration.ParseMention(body)
+	if !ok {
+		return
+	}
+	sysUserID, known := s.systemUserIDs[name]
+	if !known {
+		return // integration not registered or system user missing
+	}
+	responseBody, handled := s.integrations.Dispatch(ctx, body)
+	if !handled {
+		return
+	}
+	botMsg, err := db.PostMessage(ctx, s.pool, channelID, sysUserID, responseBody)
+	if err != nil {
+		slog.Error("post integration response", "integration", name, "err", err)
+		return
+	}
+	s.broadcast(channelID, botMsg)
 }
 
 // handleSSE streams new messages via Server-Sent Events.

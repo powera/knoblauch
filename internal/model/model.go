@@ -7,6 +7,7 @@ type User struct {
 	Username     string
 	PasswordHash string
 	Email        string
+	IsSystem     bool
 	CreatedAt    time.Time
 }
 

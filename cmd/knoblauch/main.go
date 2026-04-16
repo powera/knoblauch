@@ -17,6 +17,7 @@ import (
 
 	"github.com/powera/knoblauch/internal/db"
 	"github.com/powera/knoblauch/internal/handler"
+	"github.com/powera/knoblauch/internal/integration"
 )
 
 func main() {
@@ -91,10 +92,13 @@ func main() {
 		slog.Warn("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET not set; Google login disabled")
 	}
 
+	// Integrations
+	srv := handler.NewServer(pool, tmpl, secret, oauthCfg)
+	srv.RegisterIntegration(ctx, integration.NewBarsukasIntegration("http://100.118.20.30:5555/api/"))
+
 	// Routes
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-	srv := handler.NewServer(pool, tmpl, secret, oauthCfg)
 	srv.RegisterRoutes(mux)
 
 	httpServer := &http.Server{

@@ -27,11 +27,24 @@ func CreateUser(ctx context.Context, pool *pgxpool.Pool, username, passwordHash 
 func GetUserByUsername(ctx context.Context, pool *pgxpool.Pool, username string) (model.User, error) {
 	var u model.User
 	err := pool.QueryRow(ctx,
-		`SELECT id, username, COALESCE(password_hash, ''), created_at FROM users WHERE username = $1`,
+		`SELECT id, username, COALESCE(password_hash, ''), is_system, created_at FROM users WHERE username = $1`,
 		username,
-	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsSystem, &u.CreatedAt)
 	if err != nil {
 		return model.User{}, fmt.Errorf("get user: %w", err)
+	}
+	return u, nil
+}
+
+// GetSystemUserByUsername fetches a system/bot user (is_system=TRUE) by username.
+func GetSystemUserByUsername(ctx context.Context, pool *pgxpool.Pool, username string) (model.User, error) {
+	var u model.User
+	err := pool.QueryRow(ctx,
+		`SELECT id, username, is_system, created_at FROM users WHERE username = $1 AND is_system = TRUE`,
+		username,
+	).Scan(&u.ID, &u.Username, &u.IsSystem, &u.CreatedAt)
+	if err != nil {
+		return model.User{}, fmt.Errorf("get system user: %w", err)
 	}
 	return u, nil
 }
