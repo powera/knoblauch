@@ -75,6 +75,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /channel/{name}/poll", s.handlePoll)
 	mux.HandleFunc("GET /channels/new", s.handleNewChannelPage)
 	mux.HandleFunc("POST /channels/new", s.handleNewChannel)
+	mux.HandleFunc("GET /settings", s.handleSettingsPage)
+	mux.HandleFunc("POST /settings", s.handleSettingsUpdate)
 
 	if s.oauthConfig != nil {
 		mux.HandleFunc("GET /auth/google", s.handleGoogleLogin)

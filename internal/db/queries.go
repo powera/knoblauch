@@ -80,6 +80,34 @@ func UpsertGoogleUser(ctx context.Context, pool *pgxpool.Pool, googleID, email, 
 	return u, nil
 }
 
+// GetUserByID fetches a user by their primary key, including settings fields.
+func GetUserByID(ctx context.Context, pool *pgxpool.Pool, id int64) (model.User, error) {
+	var u model.User
+	err := pool.QueryRow(ctx,
+		`SELECT id, username, COALESCE(email, ''), is_system, created_at,
+		        COALESCE(display_name, ''), COALESCE(timezone, 'UTC'), COALESCE(avatar_url, '')
+		 FROM users WHERE id = $1`,
+		id,
+	).Scan(&u.ID, &u.Username, &u.Email, &u.IsSystem, &u.CreatedAt,
+		&u.DisplayName, &u.Timezone, &u.AvatarURL)
+	if err != nil {
+		return model.User{}, fmt.Errorf("get user by id: %w", err)
+	}
+	return u, nil
+}
+
+// UpdateUserSettings saves the mutable profile fields for a user.
+func UpdateUserSettings(ctx context.Context, pool *pgxpool.Pool, userID int64, displayName, timezone, avatarURL string) error {
+	_, err := pool.Exec(ctx,
+		`UPDATE users SET display_name = $1, timezone = $2, avatar_url = $3 WHERE id = $4`,
+		displayName, timezone, avatarURL, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("update user settings: %w", err)
+	}
+	return nil
+}
+
 // --- Channels ---
 
 func ListChannels(ctx context.Context, pool *pgxpool.Pool) ([]model.Channel, error) {

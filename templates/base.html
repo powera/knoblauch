@@ -12,6 +12,7 @@
     <div class="nav-right">
       {{if .LoggedIn}}
         <span class="nav-user">{{.Username}}</span>
+        <a href="/settings">Settings</a>
         <form method="POST" action="/logout" style="display:inline">
           <button type="submit" class="btn-link">Sign out</button>
         </form>

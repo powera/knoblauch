@@ -1,0 +1,107 @@
+{{template "base" .}}
+
+{{define "title"}} — Settings{{end}}
+
+{{define "body"}}
+<aside class="sidebar">
+  <h2>Channels</h2>
+  <ul class="channel-list">
+    {{range .Channels}}
+    <li><a href="/channel/{{.Name}}"># {{.Name}}</a></li>
+    {{else}}
+    <li class="empty">No channels yet.</li>
+    {{end}}
+  </ul>
+  <div class="sidebar-new-channel">
+    <a href="/channels/new" class="new-channel-link">+ New channel</a>
+  </div>
+</aside>
+<main class="main-content form-page settings-page">
+  <h1>Settings</h1>
+
+  {{if .Success}}
+  <p class="settings-success">Settings saved.</p>
+  {{end}}
+  {{if .Error}}
+  <p class="error">{{.Error}}</p>
+  {{end}}
+
+  <form method="POST" action="/settings">
+
+    <section class="settings-section">
+      <h2>Profile</h2>
+
+      <label>
+        Username
+        <input type="text" value="{{.User.Username}}" disabled>
+        <span class="field-hint">Your login name cannot be changed.</span>
+      </label>
+
+      <label>
+        Display name <span class="field-optional">(optional)</span>
+        <input type="text" name="display_name" value="{{.User.DisplayName}}"
+               placeholder="How your name appears in chat" maxlength="64">
+        <span class="field-hint">Leave blank to show your username.</span>
+      </label>
+
+      <label>
+        Avatar URL <span class="field-optional">(optional)</span>
+        <input type="url" name="avatar_url" id="avatar_url" value="{{.User.AvatarURL}}"
+               placeholder="https://example.com/your-photo.jpg" maxlength="512">
+        <span class="field-hint">Direct link to an image (HTTPS recommended).</span>
+      </label>
+
+      {{if .User.AvatarURL}}
+      <div class="avatar-preview">
+        <img src="{{.User.AvatarURL}}" alt="Avatar preview" id="avatar-preview-img">
+      </div>
+      {{else}}
+      <div class="avatar-preview" id="avatar-preview-wrap" style="display:none">
+        <img src="" alt="Avatar preview" id="avatar-preview-img">
+      </div>
+      {{end}}
+    </section>
+
+    <section class="settings-section">
+      <h2>Preferences</h2>
+
+      <label>
+        Timezone
+        <select name="timezone">
+          {{$current := .User.Timezone}}
+          {{range .Timezones}}
+          <option value="{{.}}" {{if eq . $current}}selected{{end}}>{{.}}</option>
+          {{end}}
+        </select>
+        <span class="field-hint">Used to display message timestamps in your local time.</span>
+      </label>
+    </section>
+
+    <button type="submit">Save settings</button>
+  </form>
+</main>
+{{end}}
+
+{{define "scripts"}}
+<script>
+(function () {
+  var input = document.getElementById('avatar_url');
+  var wrap  = document.getElementById('avatar-preview-wrap');
+  var img   = document.getElementById('avatar-preview-img');
+  if (!input || !img) return;
+
+  function update() {
+    var v = input.value.trim();
+    if (v) {
+      img.src = v;
+      if (wrap) wrap.style.display = '';
+    } else {
+      img.src = '';
+      if (wrap) wrap.style.display = 'none';
+    }
+  }
+
+  input.addEventListener('input', update);
+}());
+</script>
+{{end}}
