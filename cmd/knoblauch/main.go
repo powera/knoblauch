@@ -97,7 +97,7 @@ func main() {
 
 	// Integrations
 	srv := handler.NewServer(pool, tmpl, secret, oauthCfg)
-	srv.RegisterIntegration(ctx, integration.NewBarsukasIntegration("http://100.118.20.30:5555/api/v1/"))
+	srv.RegisterIntegration(ctx, integration.NewBarsukasIntegration("http://100.118.20.30:5555/api/v1/", secret))
 
 	// Routes
 	mux := http.NewServeMux()

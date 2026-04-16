@@ -144,6 +144,7 @@ function describeQuery(name, query) {
     if (sub === "sentences") return rest ? `sentences for ${rest}` : "sentences <lang> <guid>";
     if (sub === "status")    return rest ? `status of ${rest}` : "status <guid>";
     if (sub === "stats")     return rest ? `corpus stats for ${rest}` : "corpus stats (all languages)";
+    if (sub === "audio")     return rest ? `audio player for ${rest}` : "audio <lang> <guid> [form]";
     return `look up "${query}"`;
   }
   return `query ${name}`;

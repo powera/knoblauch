@@ -20,15 +20,17 @@ import (
 //	@barsukas sentences <lang> <guid>  — example sentences for a GUID in <lang>
 //	@barsukas status <guid>            — translation/pronunciation/sentence coverage for a GUID
 //	@barsukas stats [lang]             — corpus stats (all languages, or one)
+//	@barsukas audio <lang> <guid> [form] — inline audio player (lemma-level by default)
 //	@barsukas help                     — list all commands
 //
 // Language codes: en zh fr lt ko es de pt sw vi
 type BarsukasIntegration struct {
 	client *BarsukasClient
+	secret []byte // used to HMAC-sign audio-proxy tokens
 }
 
-func NewBarsukasIntegration(baseURL string) *BarsukasIntegration {
-	return &BarsukasIntegration{client: NewBarsukasClient(baseURL)}
+func NewBarsukasIntegration(baseURL string, secret []byte) *BarsukasIntegration {
+	return &BarsukasIntegration{client: NewBarsukasClient(baseURL), secret: secret}
 }
 
 func (b *BarsukasIntegration) Name() string { return "barsukas" }
@@ -43,6 +45,7 @@ var helpText = "[barsukas] Commands:\n" +
 	"  @barsukas sentences <lang> <guid>  example sentences for a GUID in <lang>\n" +
 	"  @barsukas status <guid>            coverage summary for a lemma\n" +
 	"  @barsukas stats [lang]             corpus stats (all languages, or one)\n" +
+	"  @barsukas audio <lang> <guid> [form]  inline audio player\n" +
 	"  @barsukas help                     show this message\n" +
 	"Language codes: " + strings.Join(SupportedLanguages, " ")
 
@@ -115,6 +118,21 @@ func (b *BarsukasIntegration) Handle(ctx context.Context, query string) (string,
 			return msg, nil
 		}
 		return b.handleSentences(ctx, lang, guid)
+	case "audio":
+		lang, tail, ok := splitLangArg(rest)
+		if !ok {
+			return "[barsukas] Usage: @barsukas audio <lang> <guid> [form]  (e.g. audio lt V01_001)", nil
+		}
+		if msg := checkLang(lang); msg != "" {
+			return msg, nil
+		}
+		parts := strings.SplitN(tail, " ", 2)
+		guid := parts[0]
+		form := ""
+		if len(parts) == 2 {
+			form = strings.TrimSpace(parts[1])
+		}
+		return b.handleAudio(ctx, lang, guid, form)
 	default:
 		// Bare word — treat as info lookup.
 		return b.handleInfo(ctx, query)
@@ -556,6 +574,71 @@ func (b *BarsukasIntegration) handleStats(ctx context.Context, rest string) (str
 			l, m.TotalWords, m.Audio.WithAudio, m.DerivativeForms.WithDerivativeForms)
 	}
 	return sb.String(), nil
+}
+
+// handleAudio picks one audio file for the given lemma/language and emits a
+// message containing a signed ::audio:: sentinel that the markup renderer
+// turns into an <audio> tag.
+func (b *BarsukasIntegration) handleAudio(ctx context.Context, lang, guid, form string) (string, error) {
+	data, _, _, err := b.client.GetAudio(ctx, guid, lang)
+	if err != nil {
+		return "", err
+	}
+	entry, ok := data[lang]
+	if !ok || len(entry.AudioFiles) == 0 {
+		return fmt.Sprintf("[barsukas] No %s audio for %s.", lang, guid), nil
+	}
+
+	// Pick: matching form if the user asked, else the lemma-level entry
+	// (grammatical_form == ""), else the first file.
+	var chosen *AudioFile
+	for i := range entry.AudioFiles {
+		f := &entry.AudioFiles[i]
+		if f.AudioURL == "" {
+			continue
+		}
+		if form != "" {
+			if strings.EqualFold(f.GrammaticalForm, form) {
+				chosen = f
+				break
+			}
+			continue
+		}
+		if f.GrammaticalForm == "" {
+			chosen = f
+			break
+		}
+	}
+	if chosen == nil {
+		for i := range entry.AudioFiles {
+			if entry.AudioFiles[i].AudioURL != "" {
+				chosen = &entry.AudioFiles[i]
+				break
+			}
+		}
+	}
+	if chosen == nil {
+		return fmt.Sprintf("[barsukas] No playable audio URL for %s (%s).", guid, lang), nil
+	}
+
+	if b.secret == nil {
+		return "[barsukas] Audio proxy is not configured on this server.", nil
+	}
+	token, err := SignAudioURL(b.secret, chosen.AudioURL)
+	if err != nil {
+		return "", err
+	}
+
+	formLabel := chosen.GrammaticalForm
+	if formLabel == "" {
+		formLabel = "lemma"
+	}
+	voice := chosen.DisplayVoice
+	if voice == "" {
+		voice = chosen.VoiceName
+	}
+	header := fmt.Sprintf("[barsukas] Audio: %s (%s, %s, voice=%s)", guid, lang, formLabel, voice)
+	return header + "\n::audio::" + token, nil
 }
 
 // formatResult formats a single SearchResult as the primary line.

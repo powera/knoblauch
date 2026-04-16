@@ -258,8 +258,22 @@ func (c *BarsukasClient) GetPronunciations(ctx context.Context, guid, langCode s
 
 // LemmaAudio is the value for each language in GET /api/v1/lemma/<guid>/audio.
 type LemmaAudio struct {
-	HasLemmaAudio  bool `json:"has_lemma_audio"`
-	FormAudioCount int  `json:"form_audio_count"`
+	HasLemmaAudio  bool        `json:"has_lemma_audio"`
+	FormAudioCount int         `json:"form_audio_count"`
+	AudioFiles     []AudioFile `json:"audio_files"`
+}
+
+// AudioFile is one entry in the audio_files list for a language.
+// AudioURL prefers the prod S3 URL, falling back to staging.
+type AudioFile struct {
+	GrammaticalForm string `json:"grammatical_form"`
+	VoiceName       string `json:"voice_name"`
+	DisplayVoice    string `json:"display_voice"`
+	ManifestMD5     string `json:"manifest_md5"`
+	AudioURL        string `json:"audio_url"`
+	S3ProdURL       string `json:"s3_prod_url"`
+	S3StagingURL    string `json:"s3_staging_url"`
+	Status          string `json:"status"`
 }
 
 type lemmaAudioResponse struct {

@@ -348,3 +348,9 @@ body {
   border-top: 1px solid var(--border);
   margin: 1rem 0;
 }
+
+.msg-body audio {
+  display: block;
+  margin-top: 4px;
+  max-width: 320px;
+}
