@@ -62,7 +62,10 @@ func main() {
 
 	// Templates — parse each page together with base.html so that
 	// "body" and "title" blocks don't overwrite each other across pages.
-	funcs := template.FuncMap{"timeAgo": timeAgo}
+	funcs := template.FuncMap{
+		"timeAgo":  timeAgo,
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
+	}
 	baseFile := filepath.Join(*tmplDir, "base.html")
 	fragmentFile := filepath.Join(*tmplDir, "message_row.html")
 	pageFiles := []string{"index.html", "login.html", "register.html", "channel.html", "new_channel.html"}

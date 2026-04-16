@@ -199,7 +199,9 @@ body {
   color: var(--text-muted);
   margin-right: 0.5rem;
 }
-.msg-body { display: inline; }
+.msg-body { display: block; }
+.msg-body ul { margin: 0.15rem 0 0 1.25rem; padding: 0; }
+.msg-body li { margin: 0; }
 .message p.empty { color: var(--text-muted); font-style: italic; padding: 1rem; }
 
 /* Post form */

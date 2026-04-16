@@ -55,7 +55,7 @@ function initChat(channelPath, initialLastID, integrations) {
         const html = `<div class="message" id="msg-${msg.ID}">
           <span class="msg-user">${escHtml(msg.Username)}</span>
           <span class="msg-time">${timeStr}</span>
-          <p class="msg-body">${escHtml(msg.Body)}</p>
+          <div class="msg-body">${msg.BodyHTML}</div>
         </div>`;
         appendMessageHTML(html);
         lastID = msg.ID;
@@ -82,7 +82,7 @@ function initChat(channelPath, initialLastID, integrations) {
           const html = `<div class="message" id="msg-${msg.ID}">
             <span class="msg-user">${escHtml(msg.Username)}</span>
             <span class="msg-time">${timeStr}</span>
-            <p class="msg-body">${escHtml(msg.Body)}</p>
+            <div class="msg-body">${msg.BodyHTML}</div>
           </div>`;
           appendMessageHTML(html);
           lastID = msg.ID;

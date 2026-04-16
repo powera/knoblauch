@@ -24,5 +24,6 @@ type Message struct {
 	UserID    int64
 	Username  string // joined from users
 	Body      string
+	BodyHTML  string // pre-rendered safe HTML (populated after DB fetch)
 	CreatedAt time.Time
 }

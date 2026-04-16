@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/powera/knoblauch/internal/markup"
 	"github.com/powera/knoblauch/internal/model"
 )
 
@@ -151,6 +152,7 @@ func RecentMessages(ctx context.Context, pool *pgxpool.Pool, channelID int64, li
 		if err := rows.Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.Body, &m.CreatedAt); err != nil {
 			return nil, err
 		}
+		m.BodyHTML = string(markup.RenderBody(m.Body))
 		msgs = append(msgs, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -184,6 +186,7 @@ func MessagesSinceID(ctx context.Context, pool *pgxpool.Pool, channelID, afterID
 		if err := rows.Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.Body, &m.CreatedAt); err != nil {
 			return nil, err
 		}
+		m.BodyHTML = string(markup.RenderBody(m.Body))
 		msgs = append(msgs, m)
 	}
 	return msgs, rows.Err()
@@ -204,5 +207,6 @@ func PostMessage(ctx context.Context, pool *pgxpool.Pool, channelID, userID int6
 	if err != nil {
 		return model.Message{}, fmt.Errorf("post message: %w", err)
 	}
+	m.BodyHTML = string(markup.RenderBody(m.Body))
 	return m, nil
 }
