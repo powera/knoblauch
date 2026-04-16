@@ -20,6 +20,15 @@ Knoblauch is a simple Slack-like group chat server written in Go with a Postgres
 - **bcrypt** for password hashing
 - **HMAC-SHA256** signed session cookies (no external session store)
 
+## Go binary location
+
+The `go` binary is not on the default PATH in this environment. Use the full path:
+
+```
+/usr/local/go/bin/go build ./...
+/usr/local/go/bin/go test ./...
+```
+
 ## Running locally
 
 1. Install Go 1.22+ and have a local Postgres instance running.
@@ -30,7 +39,7 @@ Knoblauch is a simple Slack-like group chat server written in Go with a Postgres
    ```
 3. Build and run:
    ```
-   go build -o bin/knoblauch ./cmd/knoblauch
+   /usr/local/go/bin/go build -o bin/knoblauch ./cmd/knoblauch
    ./bin/knoblauch -db "postgres://localhost/knoblauch?sslmode=disable"
    ```
 4. Open http://localhost:8080

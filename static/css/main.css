@@ -105,6 +105,20 @@ body {
   color: var(--text);
 }
 .channel-list li.empty { padding: 0.3rem 1rem; color: var(--text-muted); font-size: 0.85rem; }
+.sidebar-new-channel { padding: 0.5rem 0.25rem 0; }
+.new-channel-link {
+  display: block;
+  padding: 0.3rem 1rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+.new-channel-link:hover,
+.new-channel-link.active {
+  background: var(--msg-hover);
+  color: var(--text);
+}
 
 /* Main content */
 .main-content {

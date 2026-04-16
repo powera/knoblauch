@@ -64,7 +64,7 @@ func main() {
 	funcs := template.FuncMap{"timeAgo": timeAgo}
 	baseFile := filepath.Join(*tmplDir, "base.html")
 	fragmentFile := filepath.Join(*tmplDir, "message_row.html")
-	pageFiles := []string{"index.html", "login.html", "register.html", "channel.html"}
+	pageFiles := []string{"index.html", "login.html", "register.html", "channel.html", "new_channel.html"}
 	tmpl := make(map[string]*template.Template)
 	for _, page := range pageFiles {
 		t, err := template.New("").Funcs(funcs).ParseFiles(baseFile, fragmentFile, filepath.Join(*tmplDir, page))

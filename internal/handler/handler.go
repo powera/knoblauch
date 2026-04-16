@@ -51,6 +51,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /channel/{name}/post", s.handlePost)
 	mux.HandleFunc("GET /channel/{name}/events", s.handleSSE)
 	mux.HandleFunc("GET /channel/{name}/poll", s.handlePoll)
+	mux.HandleFunc("GET /channels/new", s.handleNewChannelPage)
+	mux.HandleFunc("POST /channels/new", s.handleNewChannel)
 
 	if s.oauthConfig != nil {
 		mux.HandleFunc("GET /auth/google", s.handleGoogleLogin)
@@ -324,6 +326,68 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(msgs)
+}
+
+func (s *Server) handleNewChannelPage(w http.ResponseWriter, r *http.Request) {
+	_, ok := getSession(r, s.secret)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	channels, err := db.ListChannels(r.Context(), s.pool)
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	s.render(w, "new_channel.html", map[string]any{
+		"LoggedIn": true,
+		"Channels": channels,
+		"Error":    "",
+	})
+}
+
+func (s *Server) handleNewChannel(w http.ResponseWriter, r *http.Request) {
+	_, ok := getSession(r, s.secret)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	description := strings.TrimSpace(r.FormValue("description"))
+
+	if len(name) < 1 || len(name) > 64 {
+		channels, _ := db.ListChannels(r.Context(), s.pool)
+		s.render(w, "new_channel.html", map[string]any{
+			"LoggedIn": true,
+			"Channels": channels,
+			"Error":    "Channel name must be 1–64 characters.",
+		})
+		return
+	}
+	// Allow only lowercase letters, numbers, hyphens, underscores.
+	for _, c := range name {
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			channels, _ := db.ListChannels(r.Context(), s.pool)
+			s.render(w, "new_channel.html", map[string]any{
+				"LoggedIn": true,
+				"Channels": channels,
+				"Error":    "Channel name may only contain lowercase letters, numbers, hyphens, and underscores.",
+			})
+			return
+		}
+	}
+
+	_, err := db.CreateChannel(r.Context(), s.pool, name, description)
+	if err != nil {
+		channels, _ := db.ListChannels(r.Context(), s.pool)
+		s.render(w, "new_channel.html", map[string]any{
+			"LoggedIn": true,
+			"Channels": channels,
+			"Error":    "A channel with that name already exists.",
+		})
+		return
+	}
+	http.Redirect(w, r, "/channel/"+name, http.StatusSeeOther)
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {

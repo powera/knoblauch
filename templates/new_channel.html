@@ -1,0 +1,34 @@
+{{template "base" .}}
+
+{{define "title"}} — New Channel{{end}}
+
+{{define "body"}}
+<aside class="sidebar">
+  <h2>Channels</h2>
+  <ul class="channel-list">
+    {{range .Channels}}
+    <li><a href="/channel/{{.Name}}"># {{.Name}}</a></li>
+    {{else}}
+    <li class="empty">No channels yet.</li>
+    {{end}}
+  </ul>
+  <div class="sidebar-new-channel">
+    <a href="/channels/new" class="new-channel-link active">+ New channel</a>
+  </div>
+</aside>
+<main class="main-content form-page">
+  <h1>New Channel</h1>
+  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  <form method="POST" action="/channels/new">
+    <label>
+      Name
+      <input type="text" name="name" placeholder="e.g. general" required maxlength="64" autofocus pattern="[a-z0-9_\-]+" title="Lowercase letters, numbers, hyphens, underscores only">
+    </label>
+    <label>
+      Description <span style="font-weight:400;font-size:0.8em">(optional)</span>
+      <input type="text" name="description" placeholder="What's this channel about?" maxlength="256">
+    </label>
+    <button type="submit">Create Channel</button>
+  </form>
+</main>
+{{end}}
