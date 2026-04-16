@@ -24,6 +24,15 @@ func (r *Registry) Register(i Integration) {
 	r.integrations[i.Name()] = i
 }
 
+// Names returns the sorted list of registered integration names.
+func (r *Registry) Names() []string {
+	names := make([]string, 0, len(r.integrations))
+	for name := range r.integrations {
+		names = append(names, name)
+	}
+	return names
+}
+
 // ParseMention parses a message body of the form "@name rest of query".
 // Returns (name, query, true) on success; ("", "", false) if not a mention.
 func ParseMention(body string) (name, query string, ok bool) {

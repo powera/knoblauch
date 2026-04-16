@@ -31,7 +31,10 @@
   </div>
 
   <form id="post-form" class="post-form" method="POST" action="/channel/{{.Channel.Name}}/post">
-    <input id="msg-input" type="text" name="body" placeholder="Message #{{.Channel.Name}}" autocomplete="off" required maxlength="4000">
+    <div class="msg-input-wrap">
+      <input id="msg-input" type="text" name="body" placeholder="Message #{{.Channel.Name}}" autocomplete="off" required maxlength="4000">
+      <span id="msg-hint" class="msg-hint" aria-live="polite"></span>
+    </div>
     <button type="submit">Send</button>
   </form>
 </main>
@@ -40,6 +43,6 @@
 {{define "scripts"}}
 <script src="/static/js/chat.js"></script>
 <script>
-  initChat("/channel/{{.Channel.Name}}", {{.LastID}});
+  initChat("/channel/{{.Channel.Name}}", {{.LastID}}, {{.Integrations}});
 </script>
 {{end}}

@@ -5,11 +5,25 @@
  * unavailable (e.g. behind certain proxies).
  */
 
-function initChat(channelPath, initialLastID) {
+function initChat(channelPath, initialLastID, integrations) {
   const list = document.getElementById("message-list");
   const form = document.getElementById("post-form");
   const input = document.getElementById("msg-input");
+  const hint = document.getElementById("msg-hint");
+  const integrationSet = new Set((integrations || []).map(s => s.toLowerCase()));
   let lastID = initialLastID;
+
+  // Show a hint when the message starts with a known @mention.
+  input.addEventListener("input", () => {
+    const val = input.value;
+    if (!val.startsWith("@")) { hint.textContent = ""; return; }
+    const name = val.slice(1).split(" ")[0].toLowerCase();
+    if (name && integrationSet.has(name)) {
+      hint.textContent = "@" + name + ": " + describeQuery(name, val.slice(name.length + 1).trim());
+    } else {
+      hint.textContent = "";
+    }
+  });
 
   // Remove the "no messages" placeholder once we receive real ones.
   function ensureNoEmpty() {
@@ -83,6 +97,7 @@ function initChat(channelPath, initialLastID) {
     const body = input.value.trim();
     if (!body) return;
     input.value = "";
+    hint.textContent = "";
     input.disabled = true;
 
     try {
@@ -111,6 +126,21 @@ function initChat(channelPath, initialLastID) {
   } else {
     startPolling();
   }
+}
+
+// describeQuery returns a short hint string for a known integration query.
+function describeQuery(name, query) {
+  if (!query) return "type a query to send";
+  const parts = query.trim().split(/\s+/);
+  const sub = parts[0].toLowerCase();
+  const rest = parts.slice(1).join(" ");
+  if (name === "barsukas") {
+    if (sub === "search") return rest ? `search for "${rest}"` : "search for a lemma";
+    if (sub === "define") return rest ? `define "${rest}"` : "define a word";
+    if (sub === "info")   return rest ? `look up "${rest}"` : "look up a word";
+    return `look up "${query}"`;
+  }
+  return `query ${name}`;
 }
 
 function escHtml(s) {

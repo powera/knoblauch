@@ -233,12 +233,13 @@ func (s *Server) handleChannelPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.render(w, "channel.html", map[string]any{
-		"LoggedIn": true,
-		"Username": sess.Username,
-		"Channel":  ch,
-		"Messages": msgs,
-		"LastID":   lastID,
-		"Channels": channels,
+		"LoggedIn":     true,
+		"Username":     sess.Username,
+		"Channel":      ch,
+		"Messages":     msgs,
+		"LastID":       lastID,
+		"Channels":     channels,
+		"Integrations": s.integrations.Names(),
 	})
 }
 
