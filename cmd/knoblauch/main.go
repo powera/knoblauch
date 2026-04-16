@@ -59,15 +59,28 @@ func main() {
 	defer pool.Close()
 	slog.Info("connected to database")
 
-	// Templates — parse all *.html files in the templates directory
-	pattern := filepath.Join(*tmplDir, "*.html")
-	tmpl, err := template.New("").Funcs(template.FuncMap{
-		"timeAgo": timeAgo,
-	}).ParseGlob(pattern)
+	// Templates — parse each page together with base.html so that
+	// "body" and "title" blocks don't overwrite each other across pages.
+	funcs := template.FuncMap{"timeAgo": timeAgo}
+	baseFile := filepath.Join(*tmplDir, "base.html")
+	fragmentFile := filepath.Join(*tmplDir, "message_row.html")
+	pageFiles := []string{"index.html", "login.html", "register.html", "channel.html"}
+	tmpl := make(map[string]*template.Template)
+	for _, page := range pageFiles {
+		t, err := template.New("").Funcs(funcs).ParseFiles(baseFile, fragmentFile, filepath.Join(*tmplDir, page))
+		if err != nil {
+			slog.Error("parse template", "file", page, "err", err)
+			os.Exit(1)
+		}
+		tmpl[page] = t
+	}
+	// message_row.html is a fragment rendered directly (not via base).
+	fragTmpl, err := template.New("message_row.html").Funcs(funcs).ParseFiles(fragmentFile)
 	if err != nil {
-		slog.Error("parse templates", "err", err)
+		slog.Error("parse template", "file", "message_row.html", "err", err)
 		os.Exit(1)
 	}
+	tmpl["message_row.html"] = fragTmpl
 
 	// Google OAuth config (optional — omit flags to disable)
 	var oauthCfg *oauth2.Config

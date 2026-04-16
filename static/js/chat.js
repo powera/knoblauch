@@ -22,10 +22,11 @@ function initChat(channelPath, initialLastID) {
     const div = document.createElement("div");
     div.innerHTML = html.trim();
     const node = div.firstChild;
+    // Deduplicate: skip if a message with this ID is already in the list.
+    const id = parseInt(node.id?.replace("msg-", ""), 10);
+    if (!isNaN(id) && document.getElementById("msg-" + id)) return;
     list.appendChild(node);
     list.scrollTop = list.scrollHeight;
-    // Update lastID from the new element's id attribute (msg-<id>).
-    const id = parseInt(node.id?.replace("msg-", ""), 10);
     if (!isNaN(id) && id > lastID) lastID = id;
   }
 
@@ -89,14 +90,10 @@ function initChat(channelPath, initialLastID) {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          "HX-Request": "true",
         },
         body: "body=" + encodeURIComponent(body),
       });
-      if (res.ok) {
-        const html = await res.text();
-        appendMessageHTML(html);
-      }
+      // SSE delivers the message; no need to append here.
     } catch (_) {
       // Network error — the message may have been lost; user can retry.
     } finally {

@@ -21,7 +21,7 @@ import (
 // Server holds shared state for all handlers.
 type Server struct {
 	pool        *pgxpool.Pool
-	templates   *template.Template
+	templates   map[string]*template.Template
 	secret      []byte
 	oauthConfig *oauth2.Config
 
@@ -30,7 +30,7 @@ type Server struct {
 	subscribers map[int64][]chan model.Message // channelID -> list of subscriber chans
 }
 
-func NewServer(pool *pgxpool.Pool, tmpl *template.Template, secret []byte, oauthCfg *oauth2.Config) *Server {
+func NewServer(pool *pgxpool.Pool, tmpl map[string]*template.Template, secret []byte, oauthCfg *oauth2.Config) *Server {
 	return &Server{
 		pool:        pool,
 		templates:   tmpl,
@@ -99,6 +99,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess, ok := getSession(r, s.secret)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
 	channels, err := db.ListChannels(r.Context(), s.pool)
 	if err != nil {
 		http.Error(w, "db error", http.StatusInternalServerError)
@@ -205,6 +209,7 @@ func (s *Server) handleChannelPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.render(w, "channel.html", map[string]any{
+		"LoggedIn": true,
 		"Username": sess.Username,
 		"Channel":  ch,
 		"Messages": msgs,
@@ -322,14 +327,26 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
-	if err := s.templates.ExecuteTemplate(w, name, data); err != nil {
+	tmpl, ok := s.templates[name]
+	if !ok {
+		slog.Error("template not found", "name", name)
+		http.Error(w, "render error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		slog.Error("render template", "name", name, "err", err)
 		http.Error(w, "render error", http.StatusInternalServerError)
 	}
 }
 
 func (s *Server) renderFragment(w http.ResponseWriter, name string, data any) {
-	if err := s.templates.ExecuteTemplate(w, name, data); err != nil {
+	tmpl, ok := s.templates[name]
+	if !ok {
+		slog.Error("template not found", "name", name)
+		http.Error(w, "render error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
 		slog.Error("render fragment", "name", name, "err", err)
 		http.Error(w, "render error", http.StatusInternalServerError)
 	}
