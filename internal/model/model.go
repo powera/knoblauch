@@ -9,6 +9,9 @@ type User struct {
 	Email        string
 	IsSystem     bool
 	CreatedAt    time.Time
+	DisplayName  string // optional; falls back to Username when empty
+	Timezone     string // IANA timezone name, e.g. "America/New_York"
+	AvatarURL    string // optional external image URL
 }
 
 type Channel struct {
