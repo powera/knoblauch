@@ -135,9 +135,13 @@ function describeQuery(name, query) {
   const sub = parts[0].toLowerCase();
   const rest = parts.slice(1).join(" ");
   if (name === "barsukas") {
-    if (sub === "search") return rest ? `search for "${rest}"` : "search for a lemma";
-    if (sub === "define") return rest ? `define "${rest}"` : "define a word";
-    if (sub === "info")   return rest ? `look up "${rest}"` : "look up a word";
+    if (sub === "help")      return "show all commands";
+    if (sub === "search")    return rest ? `search for "${rest}"` : "search for a lemma";
+    if (sub === "info")      return rest ? `look up "${rest}"` : "look up a word";
+    if (sub === "translate") return rest ? `translate ${rest}` : "translate <lang> <word>";
+    if (sub === "forms")     return rest ? `forms of ${rest}` : "forms <lang> <guid>";
+    if (sub === "grammar")   return rest ? `grammar for ${rest}` : "grammar <lang> <guid>";
+    if (sub === "sentences") return rest ? `sentences for ${rest}` : "sentences <lang> <guid>";
     return `look up "${query}"`;
   }
   return `query ${name}`;
