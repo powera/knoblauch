@@ -1,5 +1,5 @@
 {{define "message_row.html"}}<div class="message" id="msg-{{.ID}}">
-  <span class="msg-user">{{.Username}}</span>
+  <span class="msg-user">{{if .DisplayName}}{{.DisplayName}} <span class="msg-username">{{.Username}}</span>{{else}}{{.Username}}{{end}}</span>
   <span class="msg-time">{{timeAgo .CreatedAt}}</span>
   <div class="msg-body">{{.BodyHTML | safeHTML}}</div>
 </div>{{end}}

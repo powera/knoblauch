@@ -70,7 +70,7 @@
         <select name="timezone">
           {{$current := .User.Timezone}}
           {{range .Timezones}}
-          <option value="{{.}}" {{if eq . $current}}selected{{end}}>{{.}}</option>
+          <option value="{{.Value}}" {{if eq .Value $current}}selected{{end}}>{{.Label}}</option>
           {{end}}
         </select>
         <span class="field-hint">Used to display message timestamps in your local time.</span>

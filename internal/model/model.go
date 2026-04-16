@@ -22,11 +22,12 @@ type Channel struct {
 }
 
 type Message struct {
-	ID        int64
-	ChannelID int64
-	UserID    int64
-	Username  string // joined from users
-	Body      string
-	BodyHTML  string // pre-rendered safe HTML (populated after DB fetch)
-	CreatedAt time.Time
+	ID          int64
+	ChannelID   int64
+	UserID      int64
+	Username    string // joined from users
+	DisplayName string // joined from users; empty means use Username
+	Body        string
+	BodyHTML    string // pre-rendered safe HTML (populated after DB fetch)
+	CreatedAt   time.Time
 }

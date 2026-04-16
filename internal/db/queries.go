@@ -161,7 +161,7 @@ func CreateChannel(ctx context.Context, pool *pgxpool.Pool, name, description st
 // RecentMessages returns the most recent limit messages in a channel, oldest-first.
 func RecentMessages(ctx context.Context, pool *pgxpool.Pool, channelID int64, limit int) ([]model.Message, error) {
 	rows, err := pool.Query(ctx,
-		`SELECT m.id, m.channel_id, m.user_id, u.username, m.body, m.created_at
+		`SELECT m.id, m.channel_id, m.user_id, u.username, COALESCE(u.display_name, ''), m.body, m.created_at
 		 FROM messages m
 		 JOIN users u ON u.id = m.user_id
 		 WHERE m.channel_id = $1
@@ -177,7 +177,7 @@ func RecentMessages(ctx context.Context, pool *pgxpool.Pool, channelID int64, li
 	var msgs []model.Message
 	for rows.Next() {
 		var m model.Message
-		if err := rows.Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.Body, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.DisplayName, &m.Body, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		m.BodyHTML = string(markup.RenderBody(m.Body))
@@ -196,7 +196,7 @@ func RecentMessages(ctx context.Context, pool *pgxpool.Pool, channelID int64, li
 // MessagesSinceID returns messages in a channel with id > afterID, oldest-first.
 func MessagesSinceID(ctx context.Context, pool *pgxpool.Pool, channelID, afterID int64) ([]model.Message, error) {
 	rows, err := pool.Query(ctx,
-		`SELECT m.id, m.channel_id, m.user_id, u.username, m.body, m.created_at
+		`SELECT m.id, m.channel_id, m.user_id, u.username, COALESCE(u.display_name, ''), m.body, m.created_at
 		 FROM messages m
 		 JOIN users u ON u.id = m.user_id
 		 WHERE m.channel_id = $1 AND m.id > $2
@@ -211,7 +211,7 @@ func MessagesSinceID(ctx context.Context, pool *pgxpool.Pool, channelID, afterID
 	var msgs []model.Message
 	for rows.Next() {
 		var m model.Message
-		if err := rows.Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.Body, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.DisplayName, &m.Body, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		m.BodyHTML = string(markup.RenderBody(m.Body))
@@ -228,10 +228,10 @@ func PostMessage(ctx context.Context, pool *pgxpool.Pool, channelID, userID int6
 		   VALUES ($1, $2, $3)
 		   RETURNING id, channel_id, user_id, body, created_at
 		 )
-		 SELECT ins.id, ins.channel_id, ins.user_id, u.username, ins.body, ins.created_at
+		 SELECT ins.id, ins.channel_id, ins.user_id, u.username, COALESCE(u.display_name, ''), ins.body, ins.created_at
 		 FROM ins JOIN users u ON u.id = ins.user_id`,
 		channelID, userID, body,
-	).Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.Body, &m.CreatedAt)
+	).Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.DisplayName, &m.Body, &m.CreatedAt)
 	if err != nil {
 		return model.Message{}, fmt.Errorf("post message: %w", err)
 	}

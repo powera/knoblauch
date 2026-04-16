@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -9,43 +10,77 @@ import (
 	"github.com/powera/knoblauch/internal/db"
 )
 
-// commonTimezones is a curated list of IANA timezone names for the settings dropdown.
+// commonTimezones is a curated list of IANA timezone names for the settings dropdown,
+// ordered east to west (Pacific/Asia → Europe → Americas).
 var commonTimezones = []string{
-	"UTC",
-	"America/New_York",
-	"America/Chicago",
-	"America/Denver",
-	"America/Los_Angeles",
-	"America/Anchorage",
-	"Pacific/Honolulu",
-	"America/Toronto",
-	"America/Vancouver",
-	"America/Mexico_City",
-	"America/Sao_Paulo",
-	"America/Argentina/Buenos_Aires",
-	"Europe/London",
-	"Europe/Paris",
+	"Pacific/Auckland",
+	"Australia/Sydney",
+	"Australia/Melbourne",
+	"Asia/Seoul",
+	"Asia/Tokyo",
+	"Asia/Shanghai",
+	"Asia/Singapore",
+	"Asia/Bangkok",
+	"Asia/Dhaka",
+	"Asia/Kolkata",
+	"Asia/Dubai",
+	"Europe/Istanbul",
+	"Europe/Moscow",
+	"Europe/Athens",
+	"Europe/Helsinki",
+	"Europe/Warsaw",
+	"Europe/Stockholm",
+	"Europe/Amsterdam",
 	"Europe/Berlin",
 	"Europe/Rome",
 	"Europe/Madrid",
-	"Europe/Amsterdam",
-	"Europe/Stockholm",
-	"Europe/Warsaw",
-	"Europe/Helsinki",
-	"Europe/Athens",
-	"Europe/Moscow",
-	"Europe/Istanbul",
-	"Asia/Dubai",
-	"Asia/Kolkata",
-	"Asia/Dhaka",
-	"Asia/Bangkok",
-	"Asia/Singapore",
-	"Asia/Shanghai",
-	"Asia/Tokyo",
-	"Asia/Seoul",
-	"Australia/Sydney",
-	"Australia/Melbourne",
-	"Pacific/Auckland",
+	"Europe/Paris",
+	"Europe/London",
+	"UTC",
+	"America/Argentina/Buenos_Aires",
+	"America/Sao_Paulo",
+	"America/New_York",
+	"America/Toronto",
+	"America/Chicago",
+	"America/Mexico_City",
+	"America/Denver",
+	"America/Los_Angeles",
+	"America/Vancouver",
+	"America/Anchorage",
+	"Pacific/Honolulu",
+}
+
+// TimezoneOption pairs an IANA name with a human-readable label including the GMT offset.
+type TimezoneOption struct {
+	Value string
+	Label string
+}
+
+// buildTimezoneOptions returns TimezoneOption entries with current UTC offsets.
+func buildTimezoneOptions() []TimezoneOption {
+	now := time.Now()
+	opts := make([]TimezoneOption, 0, len(commonTimezones))
+	for _, name := range commonTimezones {
+		loc, err := time.LoadLocation(name)
+		if err != nil {
+			opts = append(opts, TimezoneOption{Value: name, Label: name})
+			continue
+		}
+		_, offset := now.In(loc).Zone()
+		hours := offset / 3600
+		mins := (offset % 3600) / 60
+		if mins < 0 {
+			mins = -mins
+		}
+		var label string
+		if mins != 0 {
+			label = fmt.Sprintf("GMT%+03d:%02d — %s", hours, mins, name)
+		} else {
+			label = fmt.Sprintf("GMT%+03d:00 — %s", hours, name)
+		}
+		opts = append(opts, TimezoneOption{Value: name, Label: label})
+	}
+	return opts
 }
 
 func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +104,7 @@ func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 		"Username":  sess.Username,
 		"User":      u,
 		"Channels":  channels,
-		"Timezones": commonTimezones,
+		"Timezones": buildTimezoneOptions(),
 		"Success":   false,
 		"Error":     "",
 	})
@@ -98,7 +133,7 @@ func (s *Server) handleSettingsUpdate(w http.ResponseWriter, r *http.Request) {
 			"Username":  sess.Username,
 			"User":      u,
 			"Channels":  channels,
-			"Timezones": commonTimezones,
+			"Timezones": buildTimezoneOptions(),
 			"Success":   false,
 			"Error":     msg,
 		})
@@ -145,7 +180,7 @@ func (s *Server) handleSettingsUpdate(w http.ResponseWriter, r *http.Request) {
 		"Username":  sess.Username,
 		"User":      u,
 		"Channels":  channels,
-		"Timezones": commonTimezones,
+		"Timezones": buildTimezoneOptions(),
 		"Success":   true,
 		"Error":     "",
 	})
