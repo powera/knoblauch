@@ -142,6 +142,8 @@ function describeQuery(name, query) {
     if (sub === "forms")     return rest ? `forms of ${rest}` : "forms <lang> <guid>";
     if (sub === "grammar")   return rest ? `grammar for ${rest}` : "grammar <lang> <guid>";
     if (sub === "sentences") return rest ? `sentences for ${rest}` : "sentences <lang> <guid>";
+    if (sub === "status")    return rest ? `status of ${rest}` : "status <guid>";
+    if (sub === "stats")     return rest ? `corpus stats for ${rest}` : "corpus stats (all languages)";
     return `look up "${query}"`;
   }
   return `query ${name}`;

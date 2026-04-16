@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -17,6 +18,8 @@ import (
 //	@barsukas forms <lang> <guid>      — inflected forms for a GUID in <lang>
 //	@barsukas grammar <lang> <guid>    — grammar facts for a GUID in <lang>
 //	@barsukas sentences <lang> <guid>  — example sentences for a GUID in <lang>
+//	@barsukas status <guid>            — translation/pronunciation/sentence coverage for a GUID
+//	@barsukas stats [lang]             — corpus stats (all languages, or one)
 //	@barsukas help                     — list all commands
 //
 // Language codes: en zh fr lt ko es de pt sw vi
@@ -38,6 +41,8 @@ var helpText = "[barsukas] Commands:\n" +
 	"  @barsukas forms <lang> <guid>      inflected forms for a GUID in <lang>\n" +
 	"  @barsukas grammar <lang> <guid>    grammar facts for a GUID in <lang>\n" +
 	"  @barsukas sentences <lang> <guid>  example sentences for a GUID in <lang>\n" +
+	"  @barsukas status <guid>            coverage summary for a lemma\n" +
+	"  @barsukas stats [lang]             corpus stats (all languages, or one)\n" +
 	"  @barsukas help                     show this message\n" +
 	"Language codes: " + strings.Join(SupportedLanguages, " ")
 
@@ -94,6 +99,13 @@ func (b *BarsukasIntegration) Handle(ctx context.Context, query string) (string,
 			return msg, nil
 		}
 		return b.handleGrammar(ctx, lang, guid)
+	case "status":
+		if rest == "" {
+			return "[barsukas] Usage: @barsukas status <guid>", nil
+		}
+		return b.handleStatus(ctx, rest)
+	case "stats":
+		return b.handleStats(ctx, rest)
 	case "sentences":
 		lang, guid, ok := splitLangArg(rest)
 		if !ok {
@@ -294,6 +306,254 @@ func (b *BarsukasIntegration) handleSentences(ctx context.Context, lang, guid st
 	}
 	if shown == 0 {
 		sb.WriteString("\n  No sentences with translations found.")
+	}
+	return sb.String(), nil
+}
+
+func (b *BarsukasIntegration) handleStatus(ctx context.Context, guid string) (string, error) {
+	lemma, err := b.client.GetLemma(ctx, guid)
+	if err != nil {
+		return fmt.Sprintf("[barsukas] Could not fetch %s: %v", guid, err), nil
+	}
+
+	translations, translationLangs, err := b.client.GetTranslations(ctx, guid, "")
+	if err != nil {
+		return "", err
+	}
+	// Keep only languages that have a non-empty translation.
+	var presentTranslations []string
+	for lang, t := range translations {
+		if strings.TrimSpace(t) != "" {
+			presentTranslations = append(presentTranslations, lang)
+		}
+	}
+	sort.Strings(presentTranslations)
+
+	_, pronLangs, err := b.client.GetPronunciations(ctx, guid, "")
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(pronLangs)
+
+	sentences, err := b.client.GetSentences(ctx, guid, "")
+	if err != nil {
+		return "", err
+	}
+	sentenceLangSet := map[string]bool{}
+	for _, s := range sentences {
+		for lang, t := range s.Translations {
+			if strings.TrimSpace(t) != "" {
+				sentenceLangSet[lang] = true
+			}
+		}
+	}
+	var sentenceLangs []string
+	for l := range sentenceLangSet {
+		sentenceLangs = append(sentenceLangs, l)
+	}
+	sort.Strings(sentenceLangs)
+
+	forms, err := b.client.GetForms(ctx, guid, "")
+	if err != nil {
+		return "", err
+	}
+	formLangSet := map[string]bool{}
+	inflectedLangSet := map[string]bool{}
+	for _, f := range forms {
+		formLangSet[f.LanguageCode] = true
+		if !f.IsBaseForm {
+			inflectedLangSet[f.LanguageCode] = true
+		}
+	}
+	formLangs := sortedKeys(formLangSet)
+
+	audioData, lemmaAudioLangs, _, err := b.client.GetAudio(ctx, guid, "")
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(lemmaAudioLangs)
+	audioSet := toSet(lemmaAudioLangs)
+
+	grammar, err := b.client.GetGrammar(ctx, guid, "")
+	if err != nil {
+		return "", err
+	}
+	grammarLangSet := map[string]bool{}
+	for _, g := range grammar {
+		grammarLangSet[g.LanguageCode] = true
+	}
+	grammarLangs := sortedKeys(grammarLangSet)
+
+	// If translations metadata gave us a list, prefer it (covers cases where the
+	// map was filtered server-side but metadata still reports the set).
+	if len(presentTranslations) == 0 && len(translationLangs) > 0 {
+		presentTranslations = append(presentTranslations, translationLangs...)
+		sort.Strings(presentTranslations)
+	}
+
+	pos := lemma.PosType
+	if lemma.PosSubtype != "" {
+		pos = fmt.Sprintf("%s/%s", lemma.PosType, lemma.PosSubtype)
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "[barsukas] Status for %s \"%s\" (%s):", lemma.GUID, lemma.LemmaText, pos)
+	sb.WriteString(statusLine("Translations", presentTranslations))
+	sb.WriteString(statusLine("Pronunciations", pronLangs))
+	sb.WriteString(audioLine(audioData, lemmaAudioLangs))
+	sb.WriteString(formsLine(formLangs, inflectedLangSet))
+	sb.WriteString(statusLine("Grammar facts", grammarLangs))
+	if len(sentences) == 0 {
+		sb.WriteString("\n  Sentences:     none")
+	} else {
+		fmt.Fprintf(&sb, "\n  Sentences:     %d total", len(sentences))
+		if len(sentenceLangs) > 0 {
+			fmt.Fprintf(&sb, ", with translations in: %s", strings.Join(sentenceLangs, ", "))
+		}
+	}
+
+	// Audit: what's missing among the primary supported languages?
+	translationSet := toSet(presentTranslations)
+	pronSet := toSet(pronLangs)
+	sentenceSetCopy := sentenceLangSet
+	missingTranslation := missingFromPrimary(translationSet)
+	missingPron := missingFromPrimary(pronSet)
+	missingAudio := missingFromPrimary(audioSet)
+	missingForms := missingFromPrimary(formLangSet)
+	missingSentences := missingFromPrimary(sentenceSetCopy)
+	missingGrammar := missingFromPrimary(grammarLangSet)
+	if len(missingTranslation)+len(missingPron)+len(missingAudio)+len(missingForms)+len(missingSentences)+len(missingGrammar) > 0 {
+		sb.WriteString("\n  Missing (primary languages only):")
+		if len(missingTranslation) > 0 {
+			fmt.Fprintf(&sb, "\n    translations: %s", strings.Join(missingTranslation, ", "))
+		}
+		if len(missingPron) > 0 {
+			fmt.Fprintf(&sb, "\n    pronunciations: %s", strings.Join(missingPron, ", "))
+		}
+		if len(missingAudio) > 0 {
+			fmt.Fprintf(&sb, "\n    audio: %s", strings.Join(missingAudio, ", "))
+		}
+		if len(missingForms) > 0 {
+			fmt.Fprintf(&sb, "\n    forms: %s", strings.Join(missingForms, ", "))
+		}
+		if len(missingSentences) > 0 {
+			fmt.Fprintf(&sb, "\n    sentences: %s", strings.Join(missingSentences, ", "))
+		}
+		if len(missingGrammar) > 0 {
+			fmt.Fprintf(&sb, "\n    grammar facts: %s", strings.Join(missingGrammar, ", "))
+		}
+	}
+	return sb.String(), nil
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func toSet(xs []string) map[string]bool {
+	s := make(map[string]bool, len(xs))
+	for _, x := range xs {
+		s[x] = true
+	}
+	return s
+}
+
+// missingFromPrimary returns the SupportedLanguages codes absent from have, in
+// SupportedLanguages order. English is skipped for "translations" / "forms" etc.
+// where absence is meaningless — caller filters as needed; this helper just
+// reports raw absences.
+func missingFromPrimary(have map[string]bool) []string {
+	var missing []string
+	for _, l := range SupportedLanguages {
+		if !have[l] {
+			missing = append(missing, l)
+		}
+	}
+	return missing
+}
+
+func audioLine(data map[string]LemmaAudio, lemmaLangs []string) string {
+	if len(data) == 0 {
+		return "\n  Audio: none"
+	}
+	totalFormAudio := 0
+	for _, a := range data {
+		totalFormAudio += a.FormAudioCount
+	}
+	if len(lemmaLangs) == 0 {
+		// Only form-level recordings exist, no lemma-level.
+		return fmt.Sprintf("\n  Audio: none at lemma level [+%d form recordings]", totalFormAudio)
+	}
+	if totalFormAudio == 0 {
+		return fmt.Sprintf("\n  Audio (%d): %s", len(lemmaLangs), strings.Join(lemmaLangs, ", "))
+	}
+	return fmt.Sprintf("\n  Audio (%d): %s [+%d form recordings]",
+		len(lemmaLangs), strings.Join(lemmaLangs, ", "), totalFormAudio)
+}
+
+func formsLine(langs []string, inflected map[string]bool) string {
+	if len(langs) == 0 {
+		return "\n  Forms: none"
+	}
+	inflectedCount := len(inflected)
+	baseOnly := len(langs) - inflectedCount
+	return fmt.Sprintf("\n  Forms (%d): %s [%d with inflections, %d base only]",
+		len(langs), strings.Join(langs, ", "), inflectedCount, baseOnly)
+}
+
+func statusLine(label string, langs []string) string {
+	if len(langs) == 0 {
+		return fmt.Sprintf("\n  %s: none", label)
+	}
+	return fmt.Sprintf("\n  %s (%d): %s", label, len(langs), strings.Join(langs, ", "))
+}
+
+func (b *BarsukasIntegration) handleStats(ctx context.Context, rest string) (string, error) {
+	lang := strings.ToLower(strings.TrimSpace(rest))
+	// Deliberately do NOT validate against SupportedLanguages — the server
+	// has data for many languages beyond our "fully supported" set.
+
+	data, order, err := b.client.GetWordMetadata(ctx, lang, 0)
+	if err != nil {
+		return fmt.Sprintf("[barsukas] Stats fetch failed: %v", err), nil
+	}
+	if len(data) == 0 {
+		return "[barsukas] No stats available.", nil
+	}
+
+	// Base corpus size from English.
+	baseLine := ""
+	if en, ok := data["en"]; ok {
+		baseLine = fmt.Sprintf(" (English base: %d lemmas)", en.TotalWords)
+	}
+
+	// Order: prefer metadata.languages if present, otherwise sorted keys.
+	languages := order
+	if len(languages) == 0 {
+		for l := range data {
+			languages = append(languages, l)
+		}
+		sort.Strings(languages)
+	}
+
+	var sb strings.Builder
+	if lang != "" {
+		fmt.Fprintf(&sb, "[barsukas] Stats for %s%s:", lang, baseLine)
+	} else {
+		fmt.Fprintf(&sb, "[barsukas] Corpus stats%s:", baseLine)
+	}
+	for _, l := range languages {
+		m, ok := data[l]
+		if !ok {
+			continue
+		}
+		fmt.Fprintf(&sb, "\n  %s: %d words, %d with audio, %d with derivative forms",
+			l, m.TotalWords, m.Audio.WithAudio, m.DerivativeForms.WithDerivativeForms)
 	}
 	return sb.String(), nil
 }

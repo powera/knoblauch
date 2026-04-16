@@ -10,8 +10,10 @@ import (
 	"time"
 )
 
-// SupportedLanguages lists the language codes the Barsukas API supports.
-var SupportedLanguages = []string{"en", "zh", "fr", "lt", "ko", "es", "de", "pt", "sw", "vi"}
+// SupportedLanguages lists the primary language codes the Barsukas API is built around.
+// The server has data for ~50 more languages beyond these, but these are the ones
+// with the most complete translation/audio/forms coverage.
+var SupportedLanguages = []string{"en", "es", "fr", "lt", "zh", "pt", "it", "nl", "sv", "de", "ja"}
 
 // IsValidLanguage reports whether code is a supported Barsukas language code.
 func IsValidLanguage(code string) bool {
@@ -217,6 +219,128 @@ func (c *BarsukasClient) GetSentences(ctx context.Context, guid, langCode string
 		return nil, err
 	}
 	return res.Data, nil
+}
+
+// --- Pronunciations ---
+
+// Pronunciation is the value in the map returned by GET /api/v1/lemma/<guid>/pronunciations.
+type Pronunciation struct {
+	IPA      string `json:"ipa"`
+	Phonetic string `json:"phonetic"`
+}
+
+type pronunciationsResponse struct {
+	Data     map[string]Pronunciation `json:"data"`
+	Metadata pronunciationsMeta       `json:"metadata"`
+}
+
+type pronunciationsMeta struct {
+	GUID                       string   `json:"guid"`
+	LanguagesWithPronunciations []string `json:"languages_with_pronunciations"`
+}
+
+// GetPronunciations fetches GET /api/v1/lemma/<guid>/pronunciations.
+// langCode may be empty to get all languages.
+// Returns a map of language code to pronunciation and the sorted list of languages that have one.
+func (c *BarsukasClient) GetPronunciations(ctx context.Context, guid, langCode string) (map[string]Pronunciation, []string, error) {
+	u := c.baseURL + "lemma/" + url.PathEscape(guid) + "/pronunciations"
+	if langCode != "" {
+		u += "?language=" + url.QueryEscape(langCode)
+	}
+	res, err := doGet[pronunciationsResponse](ctx, c.httpClient, u)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res.Data, res.Metadata.LanguagesWithPronunciations, nil
+}
+
+// --- Audio (per-lemma) ---
+
+// LemmaAudio is the value for each language in GET /api/v1/lemma/<guid>/audio.
+type LemmaAudio struct {
+	HasLemmaAudio  bool `json:"has_lemma_audio"`
+	FormAudioCount int  `json:"form_audio_count"`
+}
+
+type lemmaAudioResponse struct {
+	Data     map[string]LemmaAudio `json:"data"`
+	Metadata lemmaAudioMeta        `json:"metadata"`
+}
+
+type lemmaAudioMeta struct {
+	GUID                    string   `json:"guid"`
+	LanguagesWithLemmaAudio []string `json:"languages_with_lemma_audio"`
+	LanguagesWithAnyAudio   []string `json:"languages_with_any_audio"`
+}
+
+// GetAudio fetches GET /api/v1/lemma/<guid>/audio.
+// langCode may be empty for all languages. Returns the per-language data and
+// two metadata lists: languages with a lemma-level recording, and languages
+// with any audio (lemma- or form-level).
+func (c *BarsukasClient) GetAudio(ctx context.Context, guid, langCode string) (map[string]LemmaAudio, []string, []string, error) {
+	u := c.baseURL + "lemma/" + url.PathEscape(guid) + "/audio"
+	if langCode != "" {
+		u += "?language=" + url.QueryEscape(langCode)
+	}
+	res, err := doGet[lemmaAudioResponse](ctx, c.httpClient, u)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return res.Data, res.Metadata.LanguagesWithLemmaAudio, res.Metadata.LanguagesWithAnyAudio, nil
+}
+
+// --- Word metadata (global stats) ---
+
+// WordAudioCounts is the "audio" sub-object in a WordMetadata entry.
+type WordAudioCounts struct {
+	WithAudio    int `json:"with_audio"`
+	WithoutAudio int `json:"without_audio"`
+}
+
+// WordDerivativeCounts is the "derivative_forms" sub-object in a WordMetadata entry.
+type WordDerivativeCounts struct {
+	WithDerivativeForms    int `json:"with_derivative_forms"`
+	WithoutDerivativeForms int `json:"without_derivative_forms"`
+}
+
+// WordMetadata is one per-language entry from GET /api/v1/metadata/words.
+type WordMetadata struct {
+	TotalWords      int                  `json:"total_words"`
+	WordsBySubtype  map[string]int       `json:"words_by_subtype"`
+	Audio           WordAudioCounts      `json:"audio"`
+	DerivativeForms WordDerivativeCounts `json:"derivative_forms"`
+}
+
+type wordMetadataResponse struct {
+	Data     map[string]WordMetadata `json:"data"`
+	Metadata wordMetadataMeta        `json:"metadata"`
+}
+
+type wordMetadataMeta struct {
+	Languages []string `json:"languages"`
+	Count     int      `json:"count"`
+}
+
+// GetWordMetadata fetches GET /api/v1/metadata/words.
+// langCode may be empty to get all languages. maxDifficulty=0 means unset.
+// Returns the per-language data map and the ordered language list from metadata.
+func (c *BarsukasClient) GetWordMetadata(ctx context.Context, langCode string, maxDifficulty int) (map[string]WordMetadata, []string, error) {
+	params := url.Values{}
+	if langCode != "" {
+		params.Set("language", langCode)
+	}
+	if maxDifficulty > 0 {
+		params.Set("max_difficulty", fmt.Sprint(maxDifficulty))
+	}
+	u := c.baseURL + "metadata/words"
+	if q := params.Encode(); q != "" {
+		u += "?" + q
+	}
+	res, err := doGet[wordMetadataResponse](ctx, c.httpClient, u)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res.Data, res.Metadata.Languages, nil
 }
 
 // --- helpers ---
