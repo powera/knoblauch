@@ -215,6 +215,19 @@ body {
 .msg-body ul { margin: 0.15rem 0 0 1.25rem; padding: 0; }
 .msg-body li { margin: 0; }
 .message p.empty { color: var(--text-muted); font-style: italic; padding: 1rem; }
+.load-older {
+  display: block;
+  margin: 0.5rem auto;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.8rem;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.load-older:hover:not(:disabled) { background: var(--msg-hover); color: var(--text); }
+.load-older:disabled { opacity: 0.5; cursor: default; }
 
 /* Post form */
 .post-form {

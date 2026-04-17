@@ -22,7 +22,10 @@
     {{if .Channel.Description}}<p class="channel-desc">{{.Channel.Description}}</p>{{end}}
   </header>
 
-  <div id="message-list" class="message-list" data-last-id="{{.LastID}}">
+  <div id="message-list" class="message-list" data-last-id="{{.LastID}}" data-oldest-id="{{.OldestID}}">
+    {{if .HasOlder}}
+    <button id="load-older" type="button" class="load-older">Load older messages</button>
+    {{end}}
     {{range .Messages}}
     {{template "message_row.html" .}}
     {{else}}

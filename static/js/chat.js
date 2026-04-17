@@ -10,8 +10,22 @@ function initChat(channelPath, initialLastID, integrations) {
   const form = document.getElementById("post-form");
   const input = document.getElementById("msg-input");
   const hint = document.getElementById("msg-hint");
+  const loadOlderBtn = document.getElementById("load-older");
   const integrationSet = new Set((integrations || []).map(s => s.toLowerCase()));
   let lastID = initialLastID;
+  let oldestID = parseInt(list.dataset.oldestId || "0", 10);
+
+  function renderMessageHTML(msg) {
+    const timeStr = timeAgo(new Date(msg.CreatedAt));
+    const userHTML = msg.DisplayName
+      ? `${escHtml(msg.DisplayName)} <span class="msg-username">${escHtml(msg.Username)}</span>`
+      : escHtml(msg.Username);
+    return `<div class="message" id="msg-${msg.ID}">
+      <span class="msg-user">${userHTML}</span>
+      <span class="msg-time">${timeStr}</span>
+      <div class="msg-body">${msg.BodyHTML}</div>
+    </div>`;
+  }
 
   // Show a hint when the message starts with a known @mention.
   input.addEventListener("input", () => {
@@ -50,14 +64,7 @@ function initChat(channelPath, initialLastID, integrations) {
     es.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
-        // Build the message HTML client-side to avoid a round-trip.
-        const timeStr = timeAgo(new Date(msg.CreatedAt));
-        const html = `<div class="message" id="msg-${msg.ID}">
-          <span class="msg-user">${escHtml(msg.Username)}</span>
-          <span class="msg-time">${timeStr}</span>
-          <div class="msg-body">${msg.BodyHTML}</div>
-        </div>`;
-        appendMessageHTML(html);
+        appendMessageHTML(renderMessageHTML(msg));
         lastID = msg.ID;
       } catch (_) {}
     };
@@ -78,13 +85,7 @@ function initChat(channelPath, initialLastID, integrations) {
         const msgs = await res.json();
         if (!msgs) return;
         for (const msg of msgs) {
-          const timeStr = timeAgo(new Date(msg.CreatedAt));
-          const html = `<div class="message" id="msg-${msg.ID}">
-            <span class="msg-user">${escHtml(msg.Username)}</span>
-            <span class="msg-time">${timeStr}</span>
-            <div class="msg-body">${msg.BodyHTML}</div>
-          </div>`;
-          appendMessageHTML(html);
+          appendMessageHTML(renderMessageHTML(msg));
           lastID = msg.ID;
         }
       } catch (_) {}
@@ -116,6 +117,41 @@ function initChat(channelPath, initialLastID, integrations) {
       input.focus();
     }
   });
+
+  // "Load older messages" — keyset pagination via /history?before=<oldestID>.
+  const PAGE_SIZE = 50;
+  if (loadOlderBtn) {
+    loadOlderBtn.addEventListener("click", async () => {
+      if (!oldestID) return;
+      loadOlderBtn.disabled = true;
+      const prevHeight = list.scrollHeight;
+      const prevTop = list.scrollTop;
+      try {
+        const res = await fetch(`${channelPath}/history?before=${oldestID}&limit=${PAGE_SIZE}`);
+        if (!res.ok) return;
+        const msgs = await res.json();
+        if (!msgs || msgs.length === 0) {
+          loadOlderBtn.remove();
+          return;
+        }
+        // Insert oldest-first, each right after the button, in reverse so final
+        // DOM order matches server-side chronological order.
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (document.getElementById("msg-" + msgs[i].ID)) continue;
+          const div = document.createElement("div");
+          div.innerHTML = renderMessageHTML(msgs[i]).trim();
+          loadOlderBtn.after(div.firstChild);
+        }
+        oldestID = msgs[0].ID;
+        list.dataset.oldestId = String(oldestID);
+        list.scrollTop = prevTop + (list.scrollHeight - prevHeight);
+        if (msgs.length < PAGE_SIZE) loadOlderBtn.remove();
+      } catch (_) {
+      } finally {
+        loadOlderBtn.disabled = false;
+      }
+    });
+  }
 
   // Scroll to bottom on load.
   list.scrollTop = list.scrollHeight;

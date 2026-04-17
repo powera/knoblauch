@@ -73,6 +73,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /channel/{name}/post", s.handlePost)
 	mux.HandleFunc("GET /channel/{name}/events", s.handleSSE)
 	mux.HandleFunc("GET /channel/{name}/poll", s.handlePoll)
+	mux.HandleFunc("GET /channel/{name}/history", s.handleHistory)
 	mux.HandleFunc("GET /channels/new", s.handleNewChannelPage)
 	mux.HandleFunc("POST /channels/new", s.handleNewChannel)
 	mux.HandleFunc("GET /settings", s.handleSettingsPage)
@@ -231,9 +232,13 @@ func (s *Server) handleChannelPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lastID := int64(0)
+	oldestID := int64(0)
 	if len(msgs) > 0 {
 		lastID = msgs[len(msgs)-1].ID
+		oldestID = msgs[0].ID
 	}
+	// If we returned fewer than the page size, there's nothing older to load.
+	hasOlder := len(msgs) == 50
 
 	s.render(w, "channel.html", map[string]any{
 		"LoggedIn":     true,
@@ -241,6 +246,8 @@ func (s *Server) handleChannelPage(w http.ResponseWriter, r *http.Request) {
 		"Channel":      ch,
 		"Messages":     msgs,
 		"LastID":       lastID,
+		"OldestID":     oldestID,
+		"HasOlder":     hasOlder,
 		"Channels":     channels,
 		"Integrations": s.integrations.Names(),
 	})
@@ -373,6 +380,42 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 	}
 	afterID, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
 	msgs, err := db.MessagesSinceID(r.Context(), s.pool, ch.ID, afterID)
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(msgs)
+}
+
+// handleHistory returns older messages for infinite-scroll / "load older" UI.
+// GET /channel/{name}/history?before=<id>&limit=<n> returns up to n messages
+// with id < before, oldest-first.
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	_, ok := getSession(r, s.secret)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	channelName := r.PathValue("name")
+	ch, err := db.GetChannelByName(r.Context(), s.pool, channelName)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	beforeID, err := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
+	if err != nil || beforeID <= 0 {
+		http.Error(w, "invalid before", http.StatusBadRequest)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	msgs, err := db.MessagesBefore(r.Context(), s.pool, ch.ID, beforeID, limit)
 	if err != nil {
 		http.Error(w, "db error", http.StatusInternalServerError)
 		return

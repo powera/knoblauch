@@ -193,6 +193,41 @@ func RecentMessages(ctx context.Context, pool *pgxpool.Pool, channelID int64, li
 	return msgs, nil
 }
 
+// MessagesBefore returns up to limit messages in a channel with id < beforeID,
+// oldest-first (so they can be prepended to an existing list).
+func MessagesBefore(ctx context.Context, pool *pgxpool.Pool, channelID, beforeID int64, limit int) ([]model.Message, error) {
+	rows, err := pool.Query(ctx,
+		`SELECT m.id, m.channel_id, m.user_id, u.username, COALESCE(u.display_name, ''), m.body, m.created_at
+		 FROM messages m
+		 JOIN users u ON u.id = m.user_id
+		 WHERE m.channel_id = $1 AND m.id < $2
+		 ORDER BY m.id DESC
+		 LIMIT $3`,
+		channelID, beforeID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("messages before: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []model.Message
+	for rows.Next() {
+		var m model.Message
+		if err := rows.Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.DisplayName, &m.Body, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		m.BodyHTML = string(markup.RenderBody(m.Body))
+		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+	return msgs, nil
+}
+
 // MessagesSinceID returns messages in a channel with id > afterID, oldest-first.
 func MessagesSinceID(ctx context.Context, pool *pgxpool.Pool, channelID, afterID int64) ([]model.Message, error) {
 	rows, err := pool.Query(ctx,
