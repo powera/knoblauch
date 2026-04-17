@@ -44,15 +44,15 @@ func NewBarsukasClient(baseURL string) *BarsukasClient {
 
 // SearchResult is one item from GET /api/v1/search.
 type SearchResult struct {
-	GUID         string            `json:"guid"`
-	LemmaText    string            `json:"lemma_text"`
-	Definition   string            `json:"definition"`
-	PosType      string            `json:"pos_type"`
-	PosSubtype   string            `json:"pos_subtype"`
-	Difficulty   *int              `json:"difficulty_level"`
-	Disambiguation string          `json:"disambiguation"`
-	Translations map[string]string `json:"translations"`
-	Verified     bool              `json:"verified"`
+	GUID           string            `json:"guid"`
+	LemmaText      string            `json:"lemma_text"`
+	Definition     string            `json:"definition"`
+	PosType        string            `json:"pos_type"`
+	PosSubtype     string            `json:"pos_subtype"`
+	Difficulty     *int              `json:"difficulty_level"`
+	Disambiguation string            `json:"disambiguation"`
+	Translations   map[string]string `json:"translations"`
+	Verified       bool              `json:"verified"`
 }
 
 type searchResponse struct {
@@ -107,8 +107,8 @@ func (c *BarsukasClient) GetLemma(ctx context.Context, guid string) (*LemmaDetai
 // --- Translations ---
 
 type translationsResponse struct {
-	Data     map[string]string  `json:"data"`
-	Metadata translationsMeta   `json:"metadata"`
+	Data     map[string]string `json:"data"`
+	Metadata translationsMeta  `json:"metadata"`
 }
 
 type translationsMeta struct {
@@ -235,7 +235,7 @@ type pronunciationsResponse struct {
 }
 
 type pronunciationsMeta struct {
-	GUID                       string   `json:"guid"`
+	GUID                        string   `json:"guid"`
 	LanguagesWithPronunciations []string `json:"languages_with_pronunciations"`
 }
 
@@ -351,6 +351,54 @@ func (c *BarsukasClient) GetWordMetadata(ctx context.Context, langCode string, m
 		u += "?" + q
 	}
 	res, err := doGet[wordMetadataResponse](ctx, c.httpClient, u)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res.Data, res.Metadata.Languages, nil
+}
+
+// --- Sentence metadata (global stats) ---
+
+// SentenceAudioCounts is the "audio" sub-object in a SentenceMetadata entry.
+type SentenceAudioCounts struct {
+	WithAudio    int `json:"with_audio"`
+	WithoutAudio int `json:"without_audio"`
+}
+
+// SentenceVerifiedCounts is the "verified" sub-object in a SentenceMetadata entry.
+type SentenceVerifiedCounts struct {
+	WithVerified    int `json:"with_verified"`
+	WithoutVerified int `json:"without_verified"`
+}
+
+// SentenceMetadata is one per-language entry from GET /api/v1/metadata/sentences.
+type SentenceMetadata struct {
+	TotalSentences int                    `json:"total_sentences"`
+	Audio          SentenceAudioCounts    `json:"audio"`
+	Verified       SentenceVerifiedCounts `json:"verified"`
+}
+
+type sentenceMetadataResponse struct {
+	Data     map[string]SentenceMetadata `json:"data"`
+	Metadata wordMetadataMeta            `json:"metadata"`
+}
+
+// GetSentenceMetadata fetches GET /api/v1/metadata/sentences.
+// langCode may be empty to get all languages. maxDifficulty=0 means unset.
+// Returns the per-language data map and the ordered language list from metadata.
+func (c *BarsukasClient) GetSentenceMetadata(ctx context.Context, langCode string, maxDifficulty int) (map[string]SentenceMetadata, []string, error) {
+	params := url.Values{}
+	if langCode != "" {
+		params.Set("language", langCode)
+	}
+	if maxDifficulty > 0 {
+		params.Set("max_difficulty", fmt.Sprint(maxDifficulty))
+	}
+	u := c.baseURL + "metadata/sentences"
+	if q := params.Encode(); q != "" {
+		u += "?" + q
+	}
+	res, err := doGet[sentenceMetadataResponse](ctx, c.httpClient, u)
 	if err != nil {
 		return nil, nil, err
 	}

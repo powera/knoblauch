@@ -3,7 +3,9 @@ package integration
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -20,6 +22,9 @@ import (
 //	@barsukas sentences <lang> <guid>  — example sentences for a GUID in <lang>
 //	@barsukas status <guid>            — translation/pronunciation/sentence coverage for a GUID
 //	@barsukas stats [lang]             — corpus stats (all languages, or one)
+//	@barsukas progress words <lang> [max_level]
+//	@barsukas progress sentences <lang> [max_level]
+//	@barsukas progress compare <words|sentences> <lang1> <lang2> [max_level]
 //	@barsukas audio <lang> <guid> [form] — inline audio player (lemma-level by default)
 //	@barsukas help                     — list all commands
 //
@@ -45,6 +50,10 @@ var helpText = "[barsukas] Commands:\n" +
 	"  @barsukas sentences <lang> <guid>  example sentences for a GUID in <lang>\n" +
 	"  @barsukas status <guid>            coverage summary for a lemma\n" +
 	"  @barsukas stats [lang]             corpus stats (all languages, or one)\n" +
+	"  @barsukas progress words <lang> [max_level]                 word coverage metrics\n" +
+	"  @barsukas progress sentences <lang> [max_level]             sentence coverage metrics\n" +
+	"  @barsukas progress compare <words|sentences> <lang1> <lang2> [max_level]\n" +
+	"                                         compare coverage side-by-side\n" +
 	"  @barsukas audio <lang> <guid> [form]  inline audio player\n" +
 	"  @barsukas help                     show this message\n" +
 	"Language codes: " + strings.Join(SupportedLanguages, " ")
@@ -109,6 +118,8 @@ func (b *BarsukasIntegration) Handle(ctx context.Context, query string) (string,
 		return b.handleStatus(ctx, rest)
 	case "stats":
 		return b.handleStats(ctx, rest)
+	case "progress":
+		return b.handleProgress(ctx, rest)
 	case "sentences":
 		lang, guid, ok := splitLangArg(rest)
 		if !ok {
@@ -574,6 +585,209 @@ func (b *BarsukasIntegration) handleStats(ctx context.Context, rest string) (str
 			l, m.TotalWords, m.Audio.WithAudio, m.DerivativeForms.WithDerivativeForms)
 	}
 	return sb.String(), nil
+}
+
+func (b *BarsukasIntegration) handleProgress(ctx context.Context, rest string) (string, error) {
+	parts := strings.Fields(strings.TrimSpace(rest))
+	if len(parts) == 0 {
+		return "[barsukas] Usage: @barsukas progress <words|sentences|compare> ...", nil
+	}
+
+	switch strings.ToLower(parts[0]) {
+	case "words":
+		if len(parts) < 2 {
+			return "[barsukas] Usage: @barsukas progress words <language> [max_level]", nil
+		}
+		lang := strings.ToLower(parts[1])
+		maxLevel, errMsg := parseMaxLevel(parts[2:])
+		if errMsg != "" {
+			return errMsg, nil
+		}
+		data, _, err := b.client.GetWordMetadata(ctx, lang, maxLevel)
+		if err != nil {
+			return fmt.Sprintf("[barsukas] Progress fetch failed: %v", err), nil
+		}
+		m, ok := data[lang]
+		if !ok {
+			return fmt.Sprintf("[barsukas] No word metadata for %s.", lang), nil
+		}
+		return formatWordProgress(lang, maxLevel, m), nil
+	case "sentences":
+		if len(parts) < 2 {
+			return "[barsukas] Usage: @barsukas progress sentences <language> [max_level]", nil
+		}
+		lang := strings.ToLower(parts[1])
+		maxLevel, errMsg := parseMaxLevel(parts[2:])
+		if errMsg != "" {
+			return errMsg, nil
+		}
+		data, _, err := b.client.GetSentenceMetadata(ctx, lang, maxLevel)
+		if err != nil {
+			return fmt.Sprintf("[barsukas] Progress fetch failed: %v", err), nil
+		}
+		m, ok := data[lang]
+		if !ok {
+			return fmt.Sprintf("[barsukas] No sentence metadata for %s.", lang), nil
+		}
+		return formatSentenceProgress(lang, maxLevel, m), nil
+	case "compare":
+		if len(parts) < 4 {
+			return "[barsukas] Usage: @barsukas progress compare <words|sentences> <lang1> <lang2> [max_level]", nil
+		}
+		kind := strings.ToLower(parts[1])
+		lang1 := strings.ToLower(parts[2])
+		lang2 := strings.ToLower(parts[3])
+		maxLevel, errMsg := parseMaxLevel(parts[4:])
+		if errMsg != "" {
+			return errMsg, nil
+		}
+		if kind == "words" {
+			return b.compareWordProgress(ctx, lang1, lang2, maxLevel)
+		}
+		if kind == "sentences" {
+			return b.compareSentenceProgress(ctx, lang1, lang2, maxLevel)
+		}
+		return "[barsukas] Usage: @barsukas progress compare <words|sentences> <lang1> <lang2> [max_level]", nil
+	default:
+		return "[barsukas] Usage: @barsukas progress <words|sentences|compare> ...", nil
+	}
+}
+
+func parseMaxLevel(parts []string) (int, string) {
+	if len(parts) == 0 {
+		return 0, ""
+	}
+	if len(parts) > 1 {
+		return 0, "[barsukas] max_level must be a single integer in range 1..9."
+	}
+	n, err := strconv.Atoi(parts[0])
+	if err != nil || n < 1 || n > 9 {
+		return 0, "[barsukas] max_level must be an integer in range 1..9."
+	}
+	return n, ""
+}
+
+func formatWordProgress(lang string, maxLevel int, m WordMetadata) string {
+	scope := "all levels"
+	if maxLevel > 0 {
+		scope = fmt.Sprintf("max_level=%d", maxLevel)
+	}
+	audioPct := percent(m.Audio.WithAudio, m.TotalWords)
+	derivPct := percent(m.DerivativeForms.WithDerivativeForms, m.TotalWords)
+	return fmt.Sprintf("[barsukas] Word progress (%s, %s):\n  total words: %d\n  audio coverage: %s (%d/%d)\n  derivative-form coverage: %s (%d/%d)",
+		lang, scope, m.TotalWords,
+		audioPct, m.Audio.WithAudio, m.TotalWords,
+		derivPct, m.DerivativeForms.WithDerivativeForms, m.TotalWords)
+}
+
+func formatSentenceProgress(lang string, maxLevel int, m SentenceMetadata) string {
+	scope := "all levels"
+	if maxLevel > 0 {
+		scope = fmt.Sprintf("max_level=%d", maxLevel)
+	}
+	audioPct := percent(m.Audio.WithAudio, m.TotalSentences)
+	verifiedPct := percent(m.Verified.WithVerified, m.TotalSentences)
+	return fmt.Sprintf("[barsukas] Sentence progress (%s, %s):\n  total sentences: %d\n  audio coverage: %s (%d/%d)\n  verified coverage: %s (%d/%d)",
+		lang, scope, m.TotalSentences,
+		audioPct, m.Audio.WithAudio, m.TotalSentences,
+		verifiedPct, m.Verified.WithVerified, m.TotalSentences)
+}
+
+func (b *BarsukasIntegration) compareWordProgress(ctx context.Context, lang1, lang2 string, maxLevel int) (string, error) {
+	data1, _, err := b.client.GetWordMetadata(ctx, lang1, maxLevel)
+	if err != nil {
+		return fmt.Sprintf("[barsukas] Progress fetch failed for %s: %v", lang1, err), nil
+	}
+	data2, _, err := b.client.GetWordMetadata(ctx, lang2, maxLevel)
+	if err != nil {
+		return fmt.Sprintf("[barsukas] Progress fetch failed for %s: %v", lang2, err), nil
+	}
+	m1, ok1 := data1[lang1]
+	m2, ok2 := data2[lang2]
+	if !ok1 || !ok2 {
+		return fmt.Sprintf("[barsukas] Missing word metadata for %s or %s.", lang1, lang2), nil
+	}
+
+	scope := "all levels"
+	if maxLevel > 0 {
+		scope = fmt.Sprintf("max_level=%d", maxLevel)
+	}
+	audio1 := percentFloat(m1.Audio.WithAudio, m1.TotalWords)
+	audio2 := percentFloat(m2.Audio.WithAudio, m2.TotalWords)
+	deriv1 := percentFloat(m1.DerivativeForms.WithDerivativeForms, m1.TotalWords)
+	deriv2 := percentFloat(m2.DerivativeForms.WithDerivativeForms, m2.TotalWords)
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "[barsukas] Word progress comparison (%s vs %s, %s):", lang1, lang2, scope)
+	fmt.Fprintf(&sb, "\n  metric                    %-15s %-15s", strings.ToUpper(lang1), strings.ToUpper(lang2))
+	fmt.Fprintf(&sb, "\n  total words               %-15d %-15d", m1.TotalWords, m2.TotalWords)
+	fmt.Fprintf(&sb, "\n  audio coverage            %-15s %-15s", percentStr(audio1), percentStr(audio2))
+	fmt.Fprintf(&sb, "\n  derivative-form coverage  %-15s %-15s", percentStr(deriv1), percentStr(deriv2))
+	appendGapLine(&sb, lang1, lang2, "audio coverage", audio1, audio2)
+	appendGapLine(&sb, lang1, lang2, "derivative-form coverage", deriv1, deriv2)
+	return sb.String(), nil
+}
+
+func (b *BarsukasIntegration) compareSentenceProgress(ctx context.Context, lang1, lang2 string, maxLevel int) (string, error) {
+	data1, _, err := b.client.GetSentenceMetadata(ctx, lang1, maxLevel)
+	if err != nil {
+		return fmt.Sprintf("[barsukas] Progress fetch failed for %s: %v", lang1, err), nil
+	}
+	data2, _, err := b.client.GetSentenceMetadata(ctx, lang2, maxLevel)
+	if err != nil {
+		return fmt.Sprintf("[barsukas] Progress fetch failed for %s: %v", lang2, err), nil
+	}
+	m1, ok1 := data1[lang1]
+	m2, ok2 := data2[lang2]
+	if !ok1 || !ok2 {
+		return fmt.Sprintf("[barsukas] Missing sentence metadata for %s or %s.", lang1, lang2), nil
+	}
+
+	scope := "all levels"
+	if maxLevel > 0 {
+		scope = fmt.Sprintf("max_level=%d", maxLevel)
+	}
+	audio1 := percentFloat(m1.Audio.WithAudio, m1.TotalSentences)
+	audio2 := percentFloat(m2.Audio.WithAudio, m2.TotalSentences)
+	verified1 := percentFloat(m1.Verified.WithVerified, m1.TotalSentences)
+	verified2 := percentFloat(m2.Verified.WithVerified, m2.TotalSentences)
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "[barsukas] Sentence progress comparison (%s vs %s, %s):", lang1, lang2, scope)
+	fmt.Fprintf(&sb, "\n  metric                    %-15s %-15s", strings.ToUpper(lang1), strings.ToUpper(lang2))
+	fmt.Fprintf(&sb, "\n  total sentences           %-15d %-15d", m1.TotalSentences, m2.TotalSentences)
+	fmt.Fprintf(&sb, "\n  audio coverage            %-15s %-15s", percentStr(audio1), percentStr(audio2))
+	fmt.Fprintf(&sb, "\n  verified coverage         %-15s %-15s", percentStr(verified1), percentStr(verified2))
+	appendGapLine(&sb, lang1, lang2, "audio coverage", audio1, audio2)
+	appendGapLine(&sb, lang1, lang2, "verified coverage", verified1, verified2)
+	return sb.String(), nil
+}
+
+func appendGapLine(sb *strings.Builder, lang1, lang2, metric string, a, b float64) {
+	if math.Abs(a-b) < 0.05 {
+		fmt.Fprintf(sb, "\n  gap: %s and %s are essentially tied on %s.", strings.ToUpper(lang1), strings.ToUpper(lang2), metric)
+		return
+	}
+	if a < b {
+		fmt.Fprintf(sb, "\n  gap: %s %s trails %s by %.1f%%.", strings.ToUpper(lang1), metric, strings.ToUpper(lang2), b-a)
+		return
+	}
+	fmt.Fprintf(sb, "\n  gap: %s %s trails %s by %.1f%%.", strings.ToUpper(lang2), metric, strings.ToUpper(lang1), a-b)
+}
+
+func percent(with, total int) string {
+	return percentStr(percentFloat(with, total))
+}
+
+func percentFloat(with, total int) float64 {
+	if total <= 0 {
+		return 0
+	}
+	return float64(with) * 100 / float64(total)
+}
+
+func percentStr(v float64) string {
+	return fmt.Sprintf("%.1f%%", v)
 }
 
 // handleAudio picks one audio file for the given lemma/language and emits a
